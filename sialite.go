@@ -330,112 +330,116 @@ func (db *Database) addSfi(i *SiafundInput) {
 	db.id2sfi[i.ID()] = i
 }
 
+func (db *Database) addBlock(block *types.Block) {
+	height := len(db.height2block)
+	id := block.ID()
+	log.Printf("processing block %d %s.", height, id)
+	db.block2height[block] = height
+	db.block2id[block] = id
+	db.height2block = append(db.height2block, block)
+	db.id2block[id] = block
+	for i := range block.MinerPayouts {
+		db.addSco(&SiacoinOutput{
+			block:  block,
+			nature: minerPayout,
+			index:  i,
+		})
+	}
+	for j := range block.Transactions {
+		tx := &block.Transactions[j]
+		db.id2tx[tx.ID()] = tx
+		db.tx2block[tx] = block
+		for i := range tx.SiacoinInputs {
+			db.addSci(&SiacoinInput{
+				tx:    tx,
+				index: i,
+			})
+		}
+		for i := range tx.SiafundInputs {
+			db.addSfi(&SiafundInput{
+				tx:    tx,
+				index: i,
+			})
+		}
+		for i := range tx.SiacoinOutputs {
+			db.addSco(&SiacoinOutput{
+				block:  block,
+				tx:     tx,
+				nature: siacoinOutput,
+				index:  i,
+			})
+		}
+		for i := range tx.SiafundOutputs {
+			db.addSfo(&SiafundOutput{
+				tx:    tx,
+				index: i,
+			})
+		}
+		for i0, contract := range tx.FileContracts {
+			fcid := tx.FileContractID(uint64(i0))
+			h, has := db.id2history[fcid]
+			if !has {
+				h = &ContractHistory{}
+				db.id2history[fcid] = h
+			}
+			h.contract = Contract{
+				tx:    tx,
+				index: i0,
+			}
+			for i := range contract.ValidProofOutputs {
+				db.addSco(&SiacoinOutput{
+					tx:     tx,
+					nature: validProofOutput,
+					index:  i,
+					index0: i0,
+				})
+			}
+			for i := range contract.MissedProofOutputs {
+				db.addSco(&SiacoinOutput{
+					tx:     tx,
+					nature: missedProofOutput,
+					index:  i,
+					index0: i0,
+				})
+			}
+		}
+		for i0, rev := range tx.FileContractRevisions {
+			h := db.id2history[rev.ParentID]
+			h.revs = append(h.revs, ContractRev{
+				tx:    tx,
+				index: i0,
+			})
+			for i := range rev.NewValidProofOutputs {
+				db.addSco(&SiacoinOutput{
+					tx:     tx,
+					nature: validProofOutputInRevision,
+					index:  i,
+					index0: i0,
+				})
+			}
+			for i := range rev.NewMissedProofOutputs {
+				db.addSco(&SiacoinOutput{
+					tx:     tx,
+					nature: missedProofOutputInRevision,
+					index:  i,
+					index0: i0,
+				})
+			}
+		}
+		for i0, proof := range tx.StorageProofs {
+			db.id2history[proof.ParentID].proof = &StorageProof{
+				tx:    tx,
+				index: i0,
+			}
+		}
+	}
+}
+
 func processBlocks(bchan chan *types.Block) (*Database, error) {
 	log.Printf("processBlocks")
 	db := NewDatabase()
 	for block := range bchan {
-		height := len(db.height2block)
-		id := block.ID()
-		log.Printf("processing block %d %s.", height, id)
-		db.block2height[block] = height
-		db.block2id[block] = id
-		db.height2block = append(db.height2block, block)
-		db.id2block[id] = block
-		for i := range block.MinerPayouts {
-			db.addSco(&SiacoinOutput{
-				block:  block,
-				nature: minerPayout,
-				index:  i,
-			})
-		}
-		for j := range block.Transactions {
-			tx := &block.Transactions[j]
-			db.id2tx[tx.ID()] = tx
-			db.tx2block[tx] = block
-			for i := range tx.SiacoinInputs {
-				db.addSci(&SiacoinInput{
-					tx:    tx,
-					index: i,
-				})
-			}
-			for i := range tx.SiafundInputs {
-				db.addSfi(&SiafundInput{
-					tx:    tx,
-					index: i,
-				})
-			}
-			for i := range tx.SiacoinOutputs {
-				db.addSco(&SiacoinOutput{
-					block:  block,
-					tx:     tx,
-					nature: siacoinOutput,
-					index:  i,
-				})
-			}
-			for i := range tx.SiafundOutputs {
-				db.addSfo(&SiafundOutput{
-					tx:    tx,
-					index: i,
-				})
-			}
-			for i0, contract := range tx.FileContracts {
-				fcid := tx.FileContractID(uint64(i0))
-				h, has := db.id2history[fcid]
-				if !has {
-					h = &ContractHistory{}
-					db.id2history[fcid] = h
-				}
-				h.contract = Contract{
-					tx:    tx,
-					index: i0,
-				}
-				for i := range contract.ValidProofOutputs {
-					db.addSco(&SiacoinOutput{
-						tx:     tx,
-						nature: validProofOutput,
-						index:  i,
-						index0: i0,
-					})
-				}
-				for i := range contract.MissedProofOutputs {
-					db.addSco(&SiacoinOutput{
-						tx:     tx,
-						nature: missedProofOutput,
-						index:  i,
-						index0: i0,
-					})
-				}
-			}
-			for i0, rev := range tx.FileContractRevisions {
-				h := db.id2history[rev.ParentID]
-				h.revs = append(h.revs, ContractRev{
-					tx:    tx,
-					index: i0,
-				})
-				for i := range rev.NewValidProofOutputs {
-					db.addSco(&SiacoinOutput{
-						tx:     tx,
-						nature: validProofOutputInRevision,
-						index:  i,
-						index0: i0,
-					})
-				}
-				for i := range rev.NewMissedProofOutputs {
-					db.addSco(&SiacoinOutput{
-						tx:     tx,
-						nature: missedProofOutputInRevision,
-						index:  i,
-						index0: i0,
-					})
-				}
-			}
-			for i0, proof := range tx.StorageProofs {
-				db.id2history[proof.ParentID].proof = &StorageProof{
-					tx:    tx,
-					index: i0,
-				}
-			}
-		}
+		db.addBlock(block)
 	}
 	return db, nil
 }
