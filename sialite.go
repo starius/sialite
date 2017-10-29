@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/NebulousLabs/Sia/encoding"
 	"github.com/NebulousLabs/Sia/modules"
@@ -291,6 +292,8 @@ type Database struct {
 	address2sco  map[types.UnlockHash][]*SiacoinOutput
 	address2sfo  map[types.UnlockHash][]*SiafundOutput
 	id2history   map[types.FileContractID]*ContractHistory
+
+	mu sync.RWMutex
 }
 
 func NewDatabase() *Database {
@@ -444,6 +447,30 @@ func processBlocks(bchan chan *types.Block) (*Database, error) {
 	return db, nil
 }
 
+func (db *Database) fetchBlocks(sess *smux.Session) error {
+	stream, err := sess.OpenStream()
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+	bchan := make(chan *types.Block, 20)
+	prevBlock := db.height2block[len(db.height2block)-1]
+	prevBlockID := db.block2id[prevBlock]
+	hadBlocks, err := downloadBlocks(bchan, &prevBlockID, stream)
+	if err != nil {
+		return err
+	}
+	close(bchan)
+	if hadBlocks {
+		db.mu.Lock()
+		defer db.mu.Unlock()
+		for block := range bchan {
+			db.addBlock(block)
+		}
+	}
+	return nil
+}
+
 func main() {
 	flag.Parse()
 	conn, err := connect()
@@ -476,7 +503,19 @@ func main() {
 
 	fmt.Println("Initial block download completed.")
 
+	go func() {
+		for range time.NewTicker(5 * time.Second).C {
+			db.fetchBlocks(sess)
+		}
+	}()
+
 	router := httprouter.New()
 	db.addHandlers(router)
-	log.Fatal(http.ListenAndServe(*addr, router))
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		db.mu.RLock()
+		defer db.mu.RUnlock()
+		router.ServeHTTP(w, r)
+	}
+	log.Fatal(http.ListenAndServe(*addr, http.HandlerFunc(handler)))
 }
