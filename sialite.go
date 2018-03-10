@@ -543,6 +543,15 @@ func main() {
 
 	fmt.Println("Initial block download completed.")
 
+	fmt.Printf("len(tx2block) = %d\n", len(db.tx2block))
+	fmt.Printf("len(id2sco) = %d\n", len(db.id2sco))
+	fmt.Printf("len(id2sfo) = %d\n", len(db.id2sfo))
+	fmt.Printf("len(id2sci) = %d\n", len(db.id2sci))
+	fmt.Printf("len(id2sfi) = %d\n", len(db.id2sfi))
+	fmt.Printf("len(address2sco) = %d\n", len(db.address2sco))
+	fmt.Printf("len(address2sfo) = %d\n", len(db.address2sfo))
+	fmt.Printf("len(id2history) = %d\n", len(db.id2history))
+
 	go func() {
 		for range time.NewTicker(5 * time.Second).C {
 			db.fetchBlocks(sess)
