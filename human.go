@@ -160,7 +160,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 		sco := db.id2sco[sci.ParentID]
 		hsci := &HumanSiacoinInput{
 			SiacoinInput: sci,
-			Parent:       sco.Value(),
+			Parent:       sco.Value(db),
 			Source:       db.scoSource(sco),
 		}
 		ht.SiacoinInputs = append(ht.SiacoinInputs, hsci)
@@ -188,6 +188,18 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 			Source:       source,
 		}
 		ht.SiafundInputs = append(ht.SiafundInputs, hsfi)
+		// Claim.
+		claimid := sfi.ParentID.SiaClaimOutputID()
+		sco := db.id2sco[claimid]
+		hsco := &HumanSiacoinOutput{
+			SiacoinOutput: sco.Value(db),
+			ID:            claimid,
+		}
+		sci, has := db.id2sci[claimid]
+		if has {
+			hsco.Spent = db.source(sci.tx, sci.index)
+		}
+		ht.SiacoinOutputs = append(ht.SiacoinOutputs, hsco)
 	}
 	for i := range tx.SiafundOutputs {
 		sfo := &tx.SiafundOutputs[i]
@@ -280,7 +292,7 @@ type HumanAddressHistory struct {
 func (db *Database) siacoinOutput(sco *SiacoinOutput) *HumanSiacoinRecord {
 	r := &HumanSiacoinRecord{
 		Income: &HumanSiacoinOutput{
-			SiacoinOutput: sco.Value(),
+			SiacoinOutput: sco.Value(db),
 			ID:            sco.ID(),
 		},
 		IncomeSource: db.scoSource(sco),

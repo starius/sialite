@@ -142,6 +142,7 @@ const (
 	missedProofOutput           = iota
 	validProofOutputInRevision  = iota
 	missedProofOutputInRevision = iota
+	siaClaimOutput              = iota
 )
 
 func natureStr(nature int) string {
@@ -157,6 +158,8 @@ func natureStr(nature int) string {
 		return "valid_proof_output_in_revision"
 	} else if nature == missedProofOutputInRevision {
 		return "missed_proof_output_in_revision"
+	} else if nature == siaClaimOutput {
+		return "sia_claim_output"
 	} else {
 		panic("unknown nature")
 	}
@@ -183,12 +186,14 @@ func (o *SiacoinOutput) ID() types.SiacoinOutputID {
 		return o.tx.FileContractRevisions[o.index0].ParentID.StorageProofOutputID(types.ProofValid, uint64(o.index))
 	} else if o.nature == missedProofOutputInRevision {
 		return o.tx.FileContractRevisions[o.index0].ParentID.StorageProofOutputID(types.ProofMissed, uint64(o.index))
+	} else if o.nature == siaClaimOutput {
+		return o.tx.SiafundInputs[o.index].ParentID.SiaClaimOutputID()
 	} else {
 		panic("Unknown nature")
 	}
 }
 
-func (o *SiacoinOutput) Value() *types.SiacoinOutput {
+func (o *SiacoinOutput) Value(db *Database) *types.SiacoinOutput {
 	if o.nature == siacoinOutput {
 		return &o.tx.SiacoinOutputs[o.index]
 	} else if o.nature == minerPayout {
@@ -201,6 +206,21 @@ func (o *SiacoinOutput) Value() *types.SiacoinOutput {
 		return &o.tx.FileContractRevisions[o.index0].NewValidProofOutputs[o.index]
 	} else if o.nature == missedProofOutputInRevision {
 		return &o.tx.FileContractRevisions[o.index0].NewMissedProofOutputs[o.index]
+	} else if o.nature == siaClaimOutput {
+		sfi := &o.tx.SiafundInputs[o.index]
+		sfoid := sfi.ParentID
+		sfo := db.id2sfo[sfoid]
+		block1 := db.block2height[db.tx2block[sfo.tx]]
+		block2 := db.block2height[db.tx2block[o.tx]] - 1
+		value := types.NewCurrency64(0)
+		if block2 > block1 {
+			diff := db.height2sfpool[block2].Sub(db.height2sfpool[block1])
+			value = diff.Mul(sfo.Value().Value).Div64(10000)
+		}
+		return &types.SiacoinOutput{
+			UnlockHash: sfi.ClaimUnlockHash,
+			Value:      value,
+		}
 	} else {
 		panic("Unknown nature")
 	}
@@ -279,19 +299,20 @@ type ContractHistory struct {
 }
 
 type Database struct {
-	block2height map[*types.Block]int
-	block2id     map[*types.Block]types.BlockID
-	height2block []*types.Block
-	id2block     map[types.BlockID]*types.Block
-	id2tx        map[types.TransactionID]*types.Transaction
-	tx2block     map[*types.Transaction]*types.Block
-	id2sco       map[types.SiacoinOutputID]*SiacoinOutput
-	id2sfo       map[types.SiafundOutputID]*SiafundOutput
-	id2sci       map[types.SiacoinOutputID]*SiacoinInput
-	id2sfi       map[types.SiafundOutputID]*SiafundInput
-	address2sco  map[types.UnlockHash][]*SiacoinOutput
-	address2sfo  map[types.UnlockHash][]*SiafundOutput
-	id2history   map[types.FileContractID]*ContractHistory
+	block2height  map[*types.Block]int
+	block2id      map[*types.Block]types.BlockID
+	height2block  []*types.Block
+	height2sfpool []types.Currency
+	id2block      map[types.BlockID]*types.Block
+	id2tx         map[types.TransactionID]*types.Transaction
+	tx2block      map[*types.Transaction]*types.Block
+	id2sco        map[types.SiacoinOutputID]*SiacoinOutput
+	id2sfo        map[types.SiafundOutputID]*SiafundOutput
+	id2sci        map[types.SiacoinOutputID]*SiacoinInput
+	id2sfi        map[types.SiafundOutputID]*SiafundInput
+	address2sco   map[types.UnlockHash][]*SiacoinOutput
+	address2sfo   map[types.UnlockHash][]*SiafundOutput
+	id2history    map[types.FileContractID]*ContractHistory
 
 	mu sync.RWMutex
 }
@@ -315,7 +336,7 @@ func NewDatabase() *Database {
 
 func (db *Database) addSco(o *SiacoinOutput) {
 	db.id2sco[o.ID()] = o
-	a := o.Value().UnlockHash
+	a := o.Value(db).UnlockHash
 	db.address2sco[a] = append(db.address2sco[a], o)
 }
 
@@ -331,6 +352,12 @@ func (db *Database) addSci(i *SiacoinInput) {
 
 func (db *Database) addSfi(i *SiafundInput) {
 	db.id2sfi[i.ID()] = i
+	db.addSco(&SiacoinOutput{
+		tx:     i.tx,
+		block:  db.tx2block[i.tx],
+		nature: siaClaimOutput,
+		index:  i.index,
+	})
 }
 
 func (db *Database) addBlock(block *types.Block) {
@@ -341,6 +368,10 @@ func (db *Database) addBlock(block *types.Block) {
 	db.block2id[block] = id
 	db.height2block = append(db.height2block, block)
 	db.id2block[id] = block
+	sfpool := types.NewCurrency64(0)
+	if height != 0 {
+		sfpool = db.height2sfpool[len(db.height2sfpool)-1]
+	}
 	for i := range block.MinerPayouts {
 		db.addSco(&SiacoinOutput{
 			block:  block,
@@ -389,22 +420,28 @@ func (db *Database) addBlock(block *types.Block) {
 				tx:    tx,
 				index: i0,
 			}
-			for i := range contract.ValidProofOutputs {
+			sum := types.NewCurrency64(0)
+			for i, o := range contract.ValidProofOutputs {
 				db.addSco(&SiacoinOutput{
 					tx:     tx,
+					block:  block,
 					nature: validProofOutput,
 					index:  i,
 					index0: i0,
 				})
+				sum = sum.Add(o.Value)
 			}
+			tax := contract.Payout.Sub(sum)
 			for i := range contract.MissedProofOutputs {
 				db.addSco(&SiacoinOutput{
 					tx:     tx,
+					block:  block,
 					nature: missedProofOutput,
 					index:  i,
 					index0: i0,
 				})
 			}
+			sfpool = sfpool.Add(tax)
 		}
 		for i0, rev := range tx.FileContractRevisions {
 			h := db.id2history[rev.ParentID]
@@ -415,6 +452,7 @@ func (db *Database) addBlock(block *types.Block) {
 			for i := range rev.NewValidProofOutputs {
 				db.addSco(&SiacoinOutput{
 					tx:     tx,
+					block:  block,
 					nature: validProofOutputInRevision,
 					index:  i,
 					index0: i0,
@@ -423,6 +461,7 @@ func (db *Database) addBlock(block *types.Block) {
 			for i := range rev.NewMissedProofOutputs {
 				db.addSco(&SiacoinOutput{
 					tx:     tx,
+					block:  block,
 					nature: missedProofOutputInRevision,
 					index:  i,
 					index0: i0,
@@ -436,6 +475,7 @@ func (db *Database) addBlock(block *types.Block) {
 			}
 		}
 	}
+	db.height2sfpool = append(db.height2sfpool, sfpool)
 }
 
 func processBlocks(bchan chan *types.Block) (*Database, error) {
