@@ -21,7 +21,8 @@ import (
 )
 
 var (
-	addr = flag.String("addr", ":8080", "HTTP API address")
+	addr   = flag.String("addr", ":8080", "HTTP API address")
+	source = flag.String("source", "", "Source of data (siad node)")
 )
 
 type sessionHeader struct {
@@ -30,13 +31,9 @@ type sessionHeader struct {
 	NetAddress modules.NetAddress
 }
 
-func connect() (net.Conn, error) {
-	i := fastrand.Intn(len(modules.BootstrapPeers))
-	node := modules.BootstrapPeers[i]
-	node = "217.65.8.75:9981"
-	node = "62.210.92.11:9981"
-	fmt.Println(node)
-	conn, err := net.Dial("tcp", string(node))
+func connect(node string) (net.Conn, error) {
+	fmt.Println("Using node: ", node)
+	conn, err := net.Dial("tcp", node)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +510,12 @@ func (db *Database) fetchBlocks(sess *smux.Session) error {
 
 func main() {
 	flag.Parse()
-	conn, err := connect()
+	node := *source
+	if node == "" {
+		i := fastrand.Intn(len(modules.BootstrapPeers))
+		node = string(modules.BootstrapPeers[i])
+	}
+	conn, err := connect(node)
 	if err != nil {
 		panic(err)
 	}
