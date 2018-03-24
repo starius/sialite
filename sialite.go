@@ -17,12 +17,14 @@ import (
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/NebulousLabs/fastrand"
 	"github.com/julienschmidt/httprouter"
+	"github.com/starius/sialite/store"
 	"github.com/xtaci/smux"
 )
 
 var (
 	addr   = flag.String("addr", ":8080", "HTTP API address")
 	source = flag.String("source", "", "Source of data (siad node)")
+	files  = flag.String("files", "", "Dir to write files")
 )
 
 type sessionHeader struct {
@@ -357,7 +359,7 @@ func (db *Database) addSfi(i *SiafundInput) {
 	})
 }
 
-func (db *Database) addBlock(block *types.Block) {
+func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
 	height := len(db.height2block)
 	id := block.ID()
 	log.Printf("processing block %d %s.", height, id)
@@ -473,18 +475,21 @@ func (db *Database) addBlock(block *types.Block) {
 		}
 	}
 	db.height2sfpool = append(db.height2sfpool, sfpool)
+	return storage.Add(block)
 }
 
-func processBlocks(bchan chan *types.Block) (*Database, error) {
+func processBlocks(bchan chan *types.Block, storage *store.Storage) (*Database, error) {
 	log.Printf("processBlocks")
 	db := NewDatabase()
 	for block := range bchan {
-		db.addBlock(block)
+		if err := db.addBlock(block, storage); err != nil {
+			return nil, err
+		}
 	}
 	return db, nil
 }
 
-func (db *Database) fetchBlocks(sess *smux.Session) error {
+func (db *Database) fetchBlocks(sess *smux.Session, storage *store.Storage) error {
 	stream, err := sess.OpenStream()
 	if err != nil {
 		return err
@@ -502,7 +507,9 @@ func (db *Database) fetchBlocks(sess *smux.Session) error {
 		db.mu.Lock()
 		defer db.mu.Unlock()
 		for block := range bchan {
-			db.addBlock(block)
+			if err := db.addBlock(block, storage); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -510,6 +517,13 @@ func (db *Database) fetchBlocks(sess *smux.Session) error {
 
 func main() {
 	flag.Parse()
+	if *files == "" {
+		log.Fatal("Specify -files")
+	}
+	storage, err := store.New(*files)
+	if err != nil {
+		log.Fatalf("store.New: %v", err)
+	}
 	node := *source
 	if node == "" {
 		i := fastrand.Intn(len(modules.BootstrapPeers))
@@ -537,7 +551,7 @@ func main() {
 	}()
 	go func() {
 		defer wg.Done()
-		if db, err = processBlocks(bchan); err != nil {
+		if db, err = processBlocks(bchan, storage); err != nil {
 			panic(err)
 		}
 	}()
@@ -556,7 +570,7 @@ func main() {
 
 	go func() {
 		for range time.NewTicker(5 * time.Second).C {
-			db.fetchBlocks(sess)
+			db.fetchBlocks(sess, storage)
 		}
 	}()
 
