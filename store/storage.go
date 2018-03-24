@@ -6,8 +6,7 @@ import (
 
 	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/NebulousLabs/Sia/types"
-	"github.com/starius/sialite/fs2wrapper"
-	"github.com/starius/sialite/fs2wrapper/serialize"
+	"github.com/starius/sialite/fs2wrapper/siacoinoutput"
 )
 
 type countingWriter struct {
@@ -36,7 +35,7 @@ type Storage struct {
 
 	id2block map[types.BlockID]int
 
-	siacoinLocations *fs2wrapper.BpTree
+	siacoinLocations *siacoinoutput.BpTree
 }
 
 func New(dir string) (*Storage, error) {
@@ -46,7 +45,7 @@ func New(dir string) (*Storage, error) {
 		return nil, err
 	}
 	siacoinLocationsPath := path.Join(dir, "siacoinLocations")
-	siacoinLocations, err := fs2wrapper.NewBpTree(siacoinLocationsPath)
+	siacoinLocations, err := siacoinoutput.NewBpTree(siacoinLocationsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -92,9 +91,9 @@ func (s *Storage) Add(block *types.Block) error {
 func (s *Storage) addSiacoinOutputs(blockIndex int, block *types.Block) error {
 	for i := range block.MinerPayouts {
 		id := crypto.Hash(block.MinerPayoutID(uint64(i)))
-		loc := serialize.SiacoinOutputLocation{
+		loc := siacoinoutput.Location{
 			Block:  blockIndex,
-			Nature: serialize.MinerPayout,
+			Nature: siacoinoutput.MinerPayout,
 			Index:  i,
 		}
 		if err := s.siacoinLocations.Add(id, loc); err != nil {
@@ -104,10 +103,10 @@ func (s *Storage) addSiacoinOutputs(blockIndex int, block *types.Block) error {
 	for i, tx := range block.Transactions {
 		for j := range tx.SiacoinOutputs {
 			id := crypto.Hash(tx.SiacoinOutputID(uint64(j)))
-			loc := serialize.SiacoinOutputLocation{
+			loc := siacoinoutput.Location{
 				Block:  blockIndex,
 				Tx:     i,
-				Nature: serialize.SiacoinOutput,
+				Nature: siacoinoutput.SiacoinOutput,
 				Index:  j,
 			}
 			if err := s.siacoinLocations.Add(id, loc); err != nil {

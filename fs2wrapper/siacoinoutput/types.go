@@ -1,4 +1,4 @@
-package serialize
+package siacoinoutput
 
 const (
 	// For SiacoinOutput.nature.
@@ -31,7 +31,7 @@ func NatureStr(nature int) string {
 	}
 }
 
-type SiacoinOutputLocation struct {
+type Location struct {
 	Block  int
 	Tx     int // Empty for MinerPayouts.
 	Nature int
