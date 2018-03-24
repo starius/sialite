@@ -1,0 +1,3 @@
+package fs2wrapper
+
+//go:generate fs2-generic --output=wrapper.go --package-name=fs2wrapper bptree --key-type=github.com/NebulousLabs/Sia/crypto/Hash --key-size=32 --key-serializer=github.com/starius/sialite/fs2wrapper/serialize/SerializeHash --key-deserializer=github.com/starius/sialite/fs2wrapper/serialize/DeserializeHash --key-empty=crypto.Hash{} --value-type=github.com/starius/sialite/fs2wrapper/serialize/SiacoinOutputLocation --value-serializer=github.com/starius/sialite/fs2wrapper/serialize/SerializeSiacoinOutputLocation --value-deserializer=github.com/starius/sialite/fs2wrapper/serialize/DeserializeSiacoinOutputLocation --value-empty=serialize.SiacoinOutputLocation{}
