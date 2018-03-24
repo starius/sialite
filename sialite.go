@@ -124,7 +124,7 @@ func downloadAllBlocks(bchan chan *types.Block, sess *smux.Session) error {
 			log.Printf("No error, all blocks were downloaded. Stopping.")
 			break
 		}
-		if err != io.EOF || !hadBlocks {
+		if (err != io.EOF && err != io.ErrUnexpectedEOF) || !hadBlocks {
 			return err
 		}
 	}
