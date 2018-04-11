@@ -7,6 +7,7 @@ import (
 	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/starius/sialite/fs2wrapper/siacoinoutput"
+	"github.com/starius/sialite/fs2wrapper/transaction"
 )
 
 type countingWriter struct {
@@ -36,6 +37,7 @@ type Storage struct {
 	id2block map[types.BlockID]int
 
 	siacoinLocations *siacoinoutput.BpTree
+	txLocations      *transaction.BpTree
 }
 
 func New(dir string) (*Storage, error) {
@@ -49,12 +51,18 @@ func New(dir string) (*Storage, error) {
 	if err != nil {
 		return nil, err
 	}
+	txLocationsPath := path.Join(dir, "txLocations")
+	txLocations, err := transaction.NewBpTree(txLocationsPath)
+	if err != nil {
+		return nil, err
+	}
 	return &Storage{
 		blockchain: &countingWriter{
 			impl: blockchain,
 		},
 		id2block:         make(map[types.BlockID]int),
 		siacoinLocations: siacoinLocations,
+		txLocations:      txLocations,
 	}, nil
 }
 
@@ -85,6 +93,9 @@ func (s *Storage) Add(block *types.Block) error {
 	if err := s.addSiacoinOutputs(blockIndex, block); err != nil {
 		return err
 	}
+	if err := s.addTransactions(blockIndex, block); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -112,6 +123,20 @@ func (s *Storage) addSiacoinOutputs(blockIndex int, block *types.Block) error {
 			if err := s.siacoinLocations.Add(id, loc); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func (s *Storage) addTransactions(blockIndex int, block *types.Block) error {
+	for i, tx := range block.Transactions {
+		id := crypto.Hash(tx.ID())
+		loc := transaction.Location{
+			Block: blockIndex,
+			Tx:    i,
+		}
+		if err := s.txLocations.Add(id, loc); err != nil {
+			return err
 		}
 	}
 	return nil
