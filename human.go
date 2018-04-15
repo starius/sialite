@@ -1,106 +1,17 @@
 package main
 
 import "github.com/NebulousLabs/Sia/types"
+import "github.com/starius/sialite/human"
 
-type HumanSource struct {
-	Block  types.BlockID        `json:"block"`
-	Blocki int                  `json:"blocki"`
-	Tx     *types.TransactionID `json:"tx"`
-	Index  int                  `json:"index"`
-
-	// Only for SiacoinOutput.
-	Nature string `json:"nature,omitempty"`
-	Index0 *int   `json:"index0"`
-}
-
-type HumanSiacoinInput struct {
-	*types.SiacoinInput
-	Parent *types.SiacoinOutput `json:"parent"`
-	Source *HumanSource         `json:"source"`
-}
-
-type HumanSiacoinOutput struct {
-	*types.SiacoinOutput
-	ID    types.SiacoinOutputID `json:"id"`
-	Spent *HumanSource          `json:"spent"`
-}
-
-type HumanSiafundInput struct {
-	*types.SiafundInput
-	Parent *types.SiafundOutput `json:"parent"`
-	Source *HumanSource         `json:"source"`
-}
-
-type HumanSiafundOutput struct {
-	*types.SiafundOutput
-	ID    types.SiafundOutputID `json:"id"`
-	Spent *HumanSource          `json:"spent"`
-}
-
-type HumanContract struct {
-	*types.FileContract
-	ID     types.FileContractID `json:"id"`
-	Source *HumanSource         `json:"source"`
-}
-
-type HumanRevision struct {
-	*types.FileContractRevision
-	Source *HumanSource `json:"source"`
-}
-
-type HumanProof struct {
-	*types.StorageProof
-	Source *HumanSource `json:"source"`
-}
-
-type HumanContractHistory struct {
-	Contract  HumanContract   `json:"contract"`
-	Revisions []HumanRevision `json:"revisions"`
-	Proof     *HumanProof     `json:"proof"`
-}
-
-type HumanFileContract struct {
-	*types.FileContract
-	ID      types.FileContractID  `json:"id"`
-	History *HumanContractHistory `json:"history"`
-}
-
-type HumanFileContractRevision struct {
-	*types.FileContractRevision
-	History *HumanContractHistory `json:"history"`
-}
-
-type HumanStorageProof struct {
-	*types.StorageProof
-	History *HumanContractHistory `json:"history"`
-}
-
-type HumanTransaction struct {
-	ID                    types.TransactionID          `json:"id"`
-	Block                 types.BlockID                `json:"block"`
-	Blocki                int                          `json:"blocki"`
-	Size                  int                          `json:"size"`
-	SiacoinInputs         []*HumanSiacoinInput         `json:"siacoininputs"`
-	SiacoinOutputs        []*HumanSiacoinOutput        `json:"siacoinoutputs"`
-	FileContracts         []*HumanFileContract         `json:"filecontracts"`
-	FileContractRevisions []*HumanFileContractRevision `json:"filecontractrevisions"`
-	StorageProofs         []*HumanStorageProof         `json:"storageproofs"`
-	SiafundInputs         []*HumanSiafundInput         `json:"siafundinputs"`
-	SiafundOutputs        []*HumanSiafundOutput        `json:"siafundoutputs"`
-	MinerFees             []types.Currency             `json:"minerfees"`
-	ArbitraryData         [][]byte                     `json:"arbitrarydata"`
-	TransactionSignatures []types.TransactionSignature `json:"transactionsignatures"`
-}
-
-func (db *Database) source0(block *types.Block, index int) *HumanSource {
-	return &HumanSource{
+func (db *Database) source0(block *types.Block, index int) *human.Source {
+	return &human.Source{
 		Block:  db.block2id[block],
 		Blocki: db.block2height[block],
 		Index:  index,
 	}
 }
 
-func (db *Database) source(tx *types.Transaction, index int) *HumanSource {
+func (db *Database) source(tx *types.Transaction, index int) *human.Source {
 	block := db.tx2block[tx]
 	source := db.source0(block, index)
 	txid := tx.ID()
@@ -108,22 +19,22 @@ func (db *Database) source(tx *types.Transaction, index int) *HumanSource {
 	return source
 }
 
-func (db *Database) contractHistory(history *ContractHistory) *HumanContractHistory {
-	h := &HumanContractHistory{
-		Contract: HumanContract{
+func (db *Database) contractHistory(history *ContractHistory) *human.ContractHistory {
+	h := &human.ContractHistory{
+		Contract: human.Contract{
 			FileContract: &history.contract.tx.FileContracts[history.contract.index],
 			ID:           history.contract.tx.FileContractID(uint64(history.contract.index)),
 			Source:       db.source(history.contract.tx, history.contract.index),
 		},
 	}
 	for _, rev := range history.revs {
-		h.Revisions = append(h.Revisions, HumanRevision{
+		h.Revisions = append(h.Revisions, human.Revision{
 			FileContractRevision: &rev.tx.FileContractRevisions[rev.index],
 			Source:               db.source(rev.tx, rev.index),
 		})
 	}
 	if history.proof != nil {
-		h.Proof = &HumanProof{
+		h.Proof = &human.Proof{
 			StorageProof: &history.proof.tx.StorageProofs[history.proof.index],
 			Source:       db.source(history.proof.tx, history.proof.index),
 		}
@@ -131,7 +42,7 @@ func (db *Database) contractHistory(history *ContractHistory) *HumanContractHist
 	return h
 }
 
-func (db *Database) scoSource(sco *SiacoinOutput) *HumanSource {
+func (db *Database) scoSource(sco *SiacoinOutput) *human.Source {
 	source := db.source0(sco.block, sco.index)
 	if sco.tx != nil {
 		txid := sco.tx.ID()
@@ -144,9 +55,9 @@ func (db *Database) scoSource(sco *SiacoinOutput) *HumanSource {
 	return source
 }
 
-func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
+func (db *Database) wrapTx(tx *types.Transaction) *human.Transaction {
 	block := db.tx2block[tx]
-	ht := &HumanTransaction{
+	ht := &human.Transaction{
 		ID:                    tx.ID(),
 		Block:                 db.block2id[block],
 		Blocki:                db.block2height[block],
@@ -158,7 +69,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 	for i := range tx.SiacoinInputs {
 		sci := &tx.SiacoinInputs[i]
 		sco := db.id2sco[sci.ParentID]
-		hsci := &HumanSiacoinInput{
+		hsci := &human.SiacoinInput{
 			SiacoinInput: sci,
 			Parent:       sco.Value(db),
 			Source:       db.scoSource(sco),
@@ -168,7 +79,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 	for i := range tx.SiacoinOutputs {
 		sco := &tx.SiacoinOutputs[i]
 		outid := tx.SiacoinOutputID(uint64(i))
-		hsco := &HumanSiacoinOutput{
+		hsco := &human.SiacoinOutput{
 			SiacoinOutput: sco,
 			ID:            outid,
 		}
@@ -182,7 +93,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 		sfi := &tx.SiafundInputs[i]
 		sfo := db.id2sfo[sfi.ParentID]
 		source := db.source(sfo.tx, sfo.index)
-		hsfi := &HumanSiafundInput{
+		hsfi := &human.SiafundInput{
 			SiafundInput: sfi,
 			Parent:       sfo.Value(),
 			Source:       source,
@@ -191,7 +102,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 		// Claim.
 		claimid := sfi.ParentID.SiaClaimOutputID()
 		sco := db.id2sco[claimid]
-		hsco := &HumanSiacoinOutput{
+		hsco := &human.SiacoinOutput{
 			SiacoinOutput: sco.Value(db),
 			ID:            claimid,
 		}
@@ -204,7 +115,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 	for i := range tx.SiafundOutputs {
 		sfo := &tx.SiafundOutputs[i]
 		outid := tx.SiafundOutputID(uint64(i))
-		hsfo := &HumanSiafundOutput{
+		hsfo := &human.SiafundOutput{
 			SiafundOutput: sfo,
 			ID:            outid,
 		}
@@ -218,7 +129,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 		contract := &tx.FileContracts[i]
 		fcid := tx.FileContractID(uint64(i))
 		history := db.id2history[fcid]
-		ht.FileContracts = append(ht.FileContracts, &HumanFileContract{
+		ht.FileContracts = append(ht.FileContracts, &human.FileContract{
 			FileContract: contract,
 			ID:           fcid,
 			History:      db.contractHistory(history),
@@ -227,7 +138,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 	for i := range tx.FileContractRevisions {
 		rev := &tx.FileContractRevisions[i]
 		history := db.id2history[rev.ParentID]
-		ht.FileContractRevisions = append(ht.FileContractRevisions, &HumanFileContractRevision{
+		ht.FileContractRevisions = append(ht.FileContractRevisions, &human.FileContractRevision{
 			FileContractRevision: rev,
 			History:              db.contractHistory(history),
 		})
@@ -235,7 +146,7 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 	for i := range tx.StorageProofs {
 		proof := &tx.StorageProofs[i]
 		history := db.id2history[proof.ParentID]
-		ht.StorageProofs = append(ht.StorageProofs, &HumanStorageProof{
+		ht.StorageProofs = append(ht.StorageProofs, &human.StorageProof{
 			StorageProof: proof,
 			History:      db.contractHistory(history),
 		})
@@ -243,18 +154,8 @@ func (db *Database) wrapTx(tx *types.Transaction) *HumanTransaction {
 	return ht
 }
 
-type HumanBlock struct {
-	Height       int                   `json:"height"`
-	ID           types.BlockID         `json:"id"`
-	ParentID     types.BlockID         `json:"parentid"`
-	Nonce        types.BlockNonce      `json:"nonce"`
-	Timestamp    types.Timestamp       `json:"timestamp"`
-	MinerPayouts []types.SiacoinOutput `json:"minerpayouts"`
-	Transactions []*HumanTransaction   `json:"transactions"`
-}
-
-func (db *Database) wrapBlock(block *types.Block) *HumanBlock {
-	hb := &HumanBlock{
+func (db *Database) wrapBlock(block *types.Block) *human.Block {
+	hb := &human.Block{
 		Height:       db.block2height[block],
 		ID:           db.block2id[block],
 		ParentID:     block.ParentID,
@@ -269,29 +170,9 @@ func (db *Database) wrapBlock(block *types.Block) *HumanBlock {
 	return hb
 }
 
-type HumanSiacoinRecord struct {
-	Income       *HumanSiacoinOutput `json:"income"`
-	IncomeSource *HumanSource        `json:"income_source"`
-	IncomeTx     *HumanTransaction   `json:"income_tx"`
-	SpentTx      *HumanTransaction   `json:"spent_tx"`
-}
-
-type HumanSiafundRecord struct {
-	Income       *HumanSiafundOutput `json:"income"`
-	IncomeSource *HumanSource        `json:"income_source"`
-	IncomeTx     *HumanTransaction   `json:"income_tx"`
-	SpentTx      *HumanTransaction   `json:"spent_tx"`
-}
-
-type HumanAddressHistory struct {
-	UnlockHash     types.UnlockHash      `json:"unlockhash"`
-	SiacoinHistory []*HumanSiacoinRecord `json:"siacoin_history"`
-	SiafundHistory []*HumanSiafundRecord `json:"siafund_history"`
-}
-
-func (db *Database) siacoinOutput(sco *SiacoinOutput) *HumanSiacoinRecord {
-	r := &HumanSiacoinRecord{
-		Income: &HumanSiacoinOutput{
+func (db *Database) siacoinOutput(sco *SiacoinOutput) *human.SiacoinRecord {
+	r := &human.SiacoinRecord{
+		Income: &human.SiacoinOutput{
 			SiacoinOutput: sco.Value(db),
 			ID:            sco.ID(),
 		},
@@ -309,9 +190,9 @@ func (db *Database) siacoinOutput(sco *SiacoinOutput) *HumanSiacoinRecord {
 	return r
 }
 
-func (db *Database) siafundOutput(sfo *SiafundOutput) *HumanSiafundRecord {
-	r := &HumanSiafundRecord{
-		Income: &HumanSiafundOutput{
+func (db *Database) siafundOutput(sfo *SiafundOutput) *human.SiafundRecord {
+	r := &human.SiafundRecord{
+		Income: &human.SiafundOutput{
 			SiafundOutput: sfo.Value(),
 			ID:            sfo.ID(),
 		},
@@ -329,8 +210,8 @@ func (db *Database) siafundOutput(sfo *SiafundOutput) *HumanSiafundRecord {
 	return r
 }
 
-func (db *Database) addressHistory(address types.UnlockHash) *HumanAddressHistory {
-	h := &HumanAddressHistory{
+func (db *Database) addressHistory(address types.UnlockHash) *human.AddressHistory {
+	h := &human.AddressHistory{
 		UnlockHash: address,
 	}
 	for _, sco := range db.address2sco[address] {
