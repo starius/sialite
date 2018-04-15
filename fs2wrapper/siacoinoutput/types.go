@@ -37,4 +37,7 @@ type Location struct {
 	Nature int
 	Index  int // Index of SiacoinOutput in slice.
 	Index0 int // Index of FileContract or FileContractRevision.
+
+	SpentBlock int
+	SpentTx    int
 }

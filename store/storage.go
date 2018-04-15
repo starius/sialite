@@ -90,16 +90,13 @@ func (s *Storage) Add(block *types.Block) error {
 	s.id2block[id] = len(s.headers)
 	blockIndex := len(s.headers)
 	s.headers = append(s.headers, header)
-	if err := s.addSiacoinOutputs(blockIndex, block); err != nil {
-		return err
-	}
-	if err := s.addTransactions(blockIndex, block); err != nil {
+	if err := s.push(blockIndex, block); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Storage) addSiacoinOutputs(blockIndex int, block *types.Block) error {
+func (s *Storage) push(blockIndex int, block *types.Block) error {
 	for i := range block.MinerPayouts {
 		id := crypto.Hash(block.MinerPayoutID(uint64(i)))
 		loc := siacoinoutput.Location{
@@ -112,6 +109,14 @@ func (s *Storage) addSiacoinOutputs(blockIndex int, block *types.Block) error {
 		}
 	}
 	for i, tx := range block.Transactions {
+		id := crypto.Hash(tx.ID())
+		loc := transaction.Location{
+			Block: blockIndex,
+			Tx:    i,
+		}
+		if err := s.txLocations.Add(id, loc); err != nil {
+			return err
+		}
 		for j := range tx.SiacoinOutputs {
 			id := crypto.Hash(tx.SiacoinOutputID(uint64(j)))
 			loc := siacoinoutput.Location{
@@ -124,19 +129,28 @@ func (s *Storage) addSiacoinOutputs(blockIndex int, block *types.Block) error {
 				return err
 			}
 		}
-	}
-	return nil
-}
-
-func (s *Storage) addTransactions(blockIndex int, block *types.Block) error {
-	for i, tx := range block.Transactions {
-		id := crypto.Hash(tx.ID())
-		loc := transaction.Location{
-			Block: blockIndex,
-			Tx:    i,
-		}
-		if err := s.txLocations.Add(id, loc); err != nil {
-			return err
+		for j := range tx.SiacoinInputs {
+			id := crypto.Hash(tx.SiacoinInputs[j].ParentID)
+			it, err := s.siacoinLocations.Find(id)
+			if err != nil {
+				return err
+			}
+			_, loc, err, _ := it()
+			if err != nil {
+				return err
+			}
+			loc.SpentBlock = blockIndex
+			loc.SpentTx = i
+			// Store loc and remove previous version.
+			if err := s.siacoinLocations.Add(id, loc); err != nil {
+				return err
+			}
+			removeCondition := func(l siacoinoutput.Location) bool {
+				return l != loc
+			}
+			if err := s.siacoinLocations.Remove(id, removeCondition); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
