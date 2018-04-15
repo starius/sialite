@@ -11,7 +11,7 @@ func Serialize(loc Location) []byte {
 		n := binary.PutUvarint(buf, uint64(i))
 		buf = buf[n:]
 	}
-	return buf0[:len(buf)]
+	return buf0[:len(buf0)-len(buf)]
 }
 
 func Deserialize(value []byte) (loc Location) {
