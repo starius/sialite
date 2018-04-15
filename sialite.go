@@ -1,22 +1,19 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/NebulousLabs/Sia/encoding"
 	"github.com/NebulousLabs/Sia/modules"
-	"github.com/NebulousLabs/Sia/modules/consensus"
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/NebulousLabs/fastrand"
 	"github.com/julienschmidt/httprouter"
+	"github.com/starius/sialite/netlib"
 	"github.com/starius/sialite/store"
 	"github.com/xtaci/smux"
 )
@@ -26,112 +23,6 @@ var (
 	source = flag.String("source", "", "Source of data (siad node)")
 	files  = flag.String("files", "", "Dir to write files")
 )
-
-type sessionHeader struct {
-	GenesisID  types.BlockID
-	UniqueID   [8]byte
-	NetAddress modules.NetAddress
-}
-
-func connect(node string) (net.Conn, error) {
-	fmt.Println("Using node: ", node)
-	conn, err := net.Dial("tcp", node)
-	if err != nil {
-		return nil, err
-	}
-	version := "1.3.0"
-	if err := encoding.WriteObject(conn, version); err != nil {
-		return nil, err
-	}
-	if err := encoding.ReadObject(conn, &version, uint64(100)); err != nil {
-		return nil, err
-	}
-	fmt.Println(version)
-	sh := sessionHeader{
-		GenesisID:  types.GenesisID,
-		UniqueID:   [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
-		NetAddress: modules.NetAddress("62.210.92.11:1111"),
-	}
-	if err := encoding.WriteObject(conn, sh); err != nil {
-		return nil, err
-	}
-	var response string
-	if err := encoding.ReadObject(conn, &response, 100); err != nil {
-		return nil, fmt.Errorf("failed to read header acceptance: %v", err)
-	} else if response == modules.StopResponse {
-		return nil, errors.New("peer did not want a connection")
-	} else if response != modules.AcceptResponse {
-		return nil, fmt.Errorf("peer rejected our header: %v", response)
-	}
-	if err := encoding.ReadObject(conn, &sh, uint64(100)); err != nil {
-		return nil, err
-	}
-	if err := encoding.WriteObject(conn, modules.AcceptResponse); err != nil {
-		return nil, err
-	}
-	return conn, nil
-}
-
-func downloadBlocks(bchan chan *types.Block, prevBlockID *types.BlockID, conn net.Conn) (bool, error) {
-	var rpcName [8]byte
-	copy(rpcName[:], "SendBlocks")
-	if err := encoding.WriteObject(conn, rpcName); err != nil {
-		return false, err
-	}
-	var history [32]types.BlockID
-	history[31] = types.GenesisID
-	moreAvailable := true
-	// Send the block ids.
-	history[0] = *prevBlockID
-	if err := encoding.WriteObject(conn, history); err != nil {
-		return false, err
-	}
-	var hadBlocks bool
-	for moreAvailable {
-		// Read a slice of blocks from the wire.
-		var newBlocks []types.Block
-		if err := encoding.ReadObject(conn, &newBlocks, uint64(consensus.MaxCatchUpBlocks)*types.BlockSizeLimit); err != nil {
-			return hadBlocks, err
-		}
-		if err := encoding.ReadObject(conn, &moreAvailable, 1); err != nil {
-			return hadBlocks, err
-		}
-		log.Printf("moreAvailable = %v.", moreAvailable)
-		for i := range newBlocks {
-			b := &newBlocks[i]
-			if b.ParentID != *prevBlockID {
-				return hadBlocks, fmt.Errorf("parent: %s, prev: %s", b.ParentID, *prevBlockID)
-			}
-			log.Printf("Downloaded block %s.", b.ID())
-			hadBlocks = true
-			bchan <- b
-			*prevBlockID = b.ID()
-		}
-		// //test
-		// return true, nil
-	}
-	return hadBlocks, nil
-}
-
-func downloadAllBlocks(bchan chan *types.Block, sess *smux.Session) error {
-	prevBlockID := types.GenesisID
-	for {
-		stream, err := sess.OpenStream()
-		if err != nil {
-			return err
-		}
-		hadBlocks, err := downloadBlocks(bchan, &prevBlockID, stream)
-		log.Printf("downloadBlocks returned %v, %v.", hadBlocks, err)
-		if err == nil {
-			log.Printf("No error, all blocks were downloaded. Stopping.")
-			break
-		}
-		if (err != io.EOF && err != io.ErrUnexpectedEOF) || !hadBlocks {
-			return err
-		}
-	}
-	return nil
-}
 
 const (
 	// For SiacoinOutput.nature.
@@ -498,18 +389,15 @@ func (db *Database) fetchBlocks(sess *smux.Session, storage *store.Storage) erro
 	bchan := make(chan *types.Block, 20)
 	prevBlock := db.height2block[len(db.height2block)-1]
 	prevBlockID := db.block2id[prevBlock]
-	hadBlocks, err := downloadBlocks(bchan, &prevBlockID, stream)
-	if err != nil {
+	if _, err := netlib.DownloadBlocks(bchan, stream, prevBlockID); err != nil {
 		return err
 	}
 	close(bchan)
-	if hadBlocks {
-		db.mu.Lock()
-		defer db.mu.Unlock()
-		for block := range bchan {
-			if err := db.addBlock(block, storage); err != nil {
-				return err
-			}
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	for block := range bchan {
+		if err := db.addBlock(block, storage); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -529,7 +417,7 @@ func main() {
 		i := fastrand.Intn(len(modules.BootstrapPeers))
 		node = string(modules.BootstrapPeers[i])
 	}
-	conn, err := connect(node)
+	conn, err := netlib.Connect(node)
 	if err != nil {
 		panic(err)
 	}
@@ -544,7 +432,10 @@ func main() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		if err := downloadAllBlocks(bchan, sess); err != nil {
+		f := func() (io.ReadWriter, error) {
+			return sess.OpenStream()
+		}
+		if err := netlib.DownloadAllBlocks(bchan, f); err != nil {
 			panic(err)
 		}
 		close(bchan)
