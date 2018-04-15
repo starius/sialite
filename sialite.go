@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -19,9 +20,10 @@ import (
 )
 
 var (
-	addr   = flag.String("addr", ":8080", "HTTP API address")
-	source = flag.String("source", "", "Source of data (siad node)")
-	files  = flag.String("files", "", "Dir to write files")
+	addr       = flag.String("addr", ":8080", "HTTP API address")
+	blockchain = flag.String("blockchain", "", "Input file with blockchain")
+	source     = flag.String("source", "", "Source of data (siad node)")
+	files      = flag.String("files", "", "Dir to write files")
 )
 
 const (
@@ -403,6 +405,19 @@ func (db *Database) fetchBlocks(sess *smux.Session, storage *store.Storage) erro
 	return nil
 }
 
+type blockchainReader struct {
+	impl io.Reader
+}
+
+func (t *blockchainReader) Read(b []byte) (int, error) {
+	return t.impl.Read(b)
+}
+
+func (t *blockchainReader) Write(b []byte) (int, error) {
+	// No operation.
+	return len(b), nil
+}
+
 func main() {
 	flag.Parse()
 	if *files == "" {
@@ -412,18 +427,33 @@ func main() {
 	if err != nil {
 		log.Fatalf("store.New: %v", err)
 	}
-	node := *source
-	if node == "" {
-		i := fastrand.Intn(len(modules.BootstrapPeers))
-		node = string(modules.BootstrapPeers[i])
-	}
-	conn, err := netlib.Connect(node)
-	if err != nil {
-		panic(err)
-	}
-	sess, err := smux.Client(conn, nil)
-	if err != nil {
-		panic(err)
+	var sess *smux.Session
+	var f func() (io.ReadWriter, error)
+	if *blockchain != "" {
+		bc, err := os.Open(*blockchain)
+		if err != nil {
+			panic(err)
+		}
+		f = func() (io.ReadWriter, error) {
+			return &blockchainReader{impl: bc}, nil
+		}
+	} else {
+		node := *source
+		if node == "" {
+			i := fastrand.Intn(len(modules.BootstrapPeers))
+			node = string(modules.BootstrapPeers[i])
+		}
+		conn, err := netlib.Connect(node)
+		if err != nil {
+			panic(err)
+		}
+		sess, err = smux.Client(conn, nil)
+		if err != nil {
+			panic(err)
+		}
+		f = func() (io.ReadWriter, error) {
+			return sess.OpenStream()
+		}
 	}
 	bchan := make(chan *types.Block, 1000)
 	bchan <- &types.GenesisBlock
@@ -432,9 +462,6 @@ func main() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		f := func() (io.ReadWriter, error) {
-			return sess.OpenStream()
-		}
 		if err := netlib.DownloadAllBlocks(bchan, f); err != nil {
 			panic(err)
 		}
@@ -459,11 +486,13 @@ func main() {
 	fmt.Printf("len(address2sfo) = %d\n", len(db.address2sfo))
 	fmt.Printf("len(id2history) = %d\n", len(db.id2history))
 
-	go func() {
-		for range time.NewTicker(5 * time.Second).C {
-			db.fetchBlocks(sess, storage)
-		}
-	}()
+	if sess != nil {
+		go func() {
+			for range time.NewTicker(5 * time.Second).C {
+				db.fetchBlocks(sess, storage)
+			}
+		}()
+	}
 
 	router := httprouter.New()
 	db.addHandlers(router)
