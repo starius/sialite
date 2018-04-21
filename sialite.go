@@ -368,7 +368,10 @@ func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
 		}
 	}
 	db.height2sfpool = append(db.height2sfpool, sfpool)
-	return storage.Add(block)
+	if storage != nil {
+		return storage.Add(block)
+	}
+	return nil
 }
 
 func processBlocks(bchan chan *types.Block, storage *store.Storage) (*Database, error) {
@@ -420,12 +423,13 @@ func (t *blockchainReader) Write(b []byte) (int, error) {
 
 func main() {
 	flag.Parse()
-	if *files == "" {
-		log.Fatal("Specify -files")
-	}
-	storage, err := store.New(*files)
-	if err != nil {
-		log.Fatalf("store.New: %v", err)
+	var storage *store.Storage
+	var err error
+	if *files != "" {
+		storage, err = store.New(*files)
+		if err != nil {
+			log.Fatalf("store.New: %v", err)
+		}
 	}
 	var sess *smux.Session
 	var f func() (io.ReadWriter, error)
