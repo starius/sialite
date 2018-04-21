@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	blockLimit = 100
-	txLimit    = 1000
+	blockLimit     = 100
+	txLimit        = 1000
+	addressesLimit = 1000
 )
 
 var (
@@ -49,7 +50,7 @@ func doList() []types.BlockID {
 	return ids
 }
 
-func doBlocks(ids []types.BlockID) (txs []types.TransactionID) {
+func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types.UnlockHash) {
 	for _, blockID := range ids {
 		resp, err := http.Get(*addr + "/block/" + blockID.String())
 		if err != nil {
@@ -74,9 +75,40 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID) {
 			panic(err)
 		}
 		o.Close()
-		// Find transaction ids.
+		// Find transaction ids and addresses.
+		for _, so := range block.MinerPayouts {
+			addresses = append(addresses, so.UnlockHash)
+		}
 		for _, tx := range block.Transactions {
 			txs = append(txs, tx.ID)
+			for _, si := range tx.SiacoinInputs {
+				addresses = append(addresses, si.UnlockConditions.UnlockHash())
+			}
+			for _, so := range tx.SiacoinOutputs {
+				addresses = append(addresses, so.UnlockHash)
+			}
+			for _, si := range tx.SiafundInputs {
+				addresses = append(addresses, si.UnlockConditions.UnlockHash())
+			}
+			for _, so := range tx.SiafundOutputs {
+				addresses = append(addresses, so.UnlockHash)
+			}
+			for _, contract := range tx.FileContracts {
+				for _, so := range contract.ValidProofOutputs {
+					addresses = append(addresses, so.UnlockHash)
+				}
+				for _, so := range contract.MissedProofOutputs {
+					addresses = append(addresses, so.UnlockHash)
+				}
+			}
+			for _, rev := range tx.FileContractRevisions {
+				for _, so := range rev.NewValidProofOutputs {
+					addresses = append(addresses, so.UnlockHash)
+				}
+				for _, so := range rev.NewMissedProofOutputs {
+					addresses = append(addresses, so.UnlockHash)
+				}
+			}
 		}
 	}
 	return
@@ -110,11 +142,40 @@ func doTxs(ids []types.TransactionID) {
 	}
 }
 
+func doAddresses(addresses []types.UnlockHash) {
+	for _, address := range addresses {
+		resp, err := http.Get(*addr + "/address/" + address.String())
+		if err != nil {
+			panic(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			panic(resp.StatusCode)
+		}
+		dec := json.NewDecoder(resp.Body)
+		var history human.AddressHistory
+		if err := dec.Decode(&history); err != nil {
+			panic(err)
+		}
+		resp.Body.Close()
+		o, err := os.Create(filepath.Join(*out, "addresses", address.String()+".json"))
+		if err != nil {
+			panic(err)
+		}
+		enc := json.NewEncoder(o)
+		enc.SetIndent("", "    ")
+		if err := enc.Encode(history); err != nil {
+			panic(err)
+		}
+		o.Close()
+	}
+}
+
 func main() {
 	flag.Parse()
 	os.Mkdir(*out, 0755)
 	os.Mkdir(filepath.Join(*out, "blocks"), 0755)
 	os.Mkdir(filepath.Join(*out, "txs"), 0755)
+	os.Mkdir(filepath.Join(*out, "addresses"), 0755)
 	blocks := doList()
 	r := rand.New(rand.NewSource(42)) // Deterministic random.
 	r.Shuffle(len(blocks), func(i, j int) {
@@ -124,8 +185,7 @@ func main() {
 		blocks[j] = t
 	})
 	someBlocks := blocks[:blockLimit]
-	txs := doBlocks(someBlocks)
-	r = rand.New(rand.NewSource(42)) // Deterministic random.
+	txs, addresses := doBlocks(someBlocks)
 	r.Shuffle(len(txs), func(i, j int) {
 		// Swap.
 		t := txs[i]
@@ -134,5 +194,13 @@ func main() {
 	})
 	someTxs := txs[:txLimit]
 	doTxs(someTxs)
-	// TODO: contracts, addresses, outputs.
+	r.Shuffle(len(addresses), func(i, j int) {
+		// Swap.
+		t := addresses[i]
+		addresses[i] = addresses[j]
+		addresses[j] = t
+	})
+	someAddresses := addresses[:addressesLimit]
+	doAddresses(someAddresses)
+	// TODO: contracts, outputs.
 }
