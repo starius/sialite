@@ -25,14 +25,14 @@ func (db *Database) handleBlock(w http.ResponseWriter, r *http.Request, ps httpr
 	var idhash crypto.Hash
 	if err := idhash.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
+		fmt.Fprintf(w, "id.LoadString: %v.\n", err)
 		return
 	}
 	id := types.BlockID(idhash)
 	block, has := db.id2block[id]
 	if !has {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("no block with id %q.\n", idhex)))
+		fmt.Fprintf(w, "no block with id %q.\n", idhex)
 		return
 	}
 	enc := json.NewEncoder(w)
@@ -43,12 +43,12 @@ func (db *Database) handleBlocki(w http.ResponseWriter, r *http.Request, ps http
 	index, err := strconv.Atoi(ps.ByName("i"))
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("strconv.Atoi: %v.\n", err)))
+		fmt.Fprintf(w, "strconv.Atoi: %v.\n", err)
 		return
 	}
 	if index < 0 || index > len(db.height2block) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("No block with height %d.\n", index)))
+		fmt.Fprintf(w, "No block with height %d.\n", index)
 		return
 	}
 	block := db.height2block[index]
@@ -61,14 +61,14 @@ func (db *Database) handleTx(w http.ResponseWriter, r *http.Request, ps httprout
 	var idhash crypto.Hash
 	if err := idhash.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
+		fmt.Fprintf(w, "id.LoadString: %v.\n", err)
 		return
 	}
 	id := types.TransactionID(idhash)
 	tx, has := db.id2tx[id]
 	if !has {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("no transaction with id %q.\n", idhex)))
+		fmt.Fprintf(w, "no transaction with id %q.\n", idhex)
 		return
 	}
 	enc := json.NewEncoder(w)
@@ -80,14 +80,14 @@ func (db *Database) handleContract(w http.ResponseWriter, r *http.Request, ps ht
 	var idhash crypto.Hash
 	if err := idhash.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
+		fmt.Fprintf(w, "id.LoadString: %v.\n", err)
 		return
 	}
 	id := types.FileContractID(idhash)
 	history, has := db.id2history[id]
 	if !has {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("no contract with id %q.\n", idhex)))
+		fmt.Fprintf(w, "no contract with id %q.\n", idhex)
 		return
 	}
 	data := db.contractHistory(history)
@@ -101,13 +101,13 @@ func (db *Database) handleAddress(w http.ResponseWriter, r *http.Request, ps htt
 	var id types.UnlockHash
 	if err := id.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
+		fmt.Fprintf(w, "id.LoadString: %v.\n", err)
 		return
 	}
 	history, err := db.addressHistory(id, startWith)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("db.addressHistory: %v.\n", err)))
+		fmt.Fprintf(w, "db.addressHistory: %v.\n", err)
 		return
 	}
 	enc := json.NewEncoder(w)
@@ -119,14 +119,14 @@ func (db *Database) handleSiacoinOutput(w http.ResponseWriter, r *http.Request, 
 	var idhash crypto.Hash
 	if err := idhash.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
+		fmt.Fprintf(w, "id.LoadString: %v.\n", err)
 		return
 	}
 	id := types.SiacoinOutputID(idhash)
 	sco, has := db.id2sco[id]
 	if !has {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("no Siacoin output with id %q.\n", idhex)))
+		fmt.Fprintf(w, "no Siacoin output with id %q.\n", idhex)
 		return
 	}
 	data := db.siacoinOutput(sco)
@@ -139,14 +139,14 @@ func (db *Database) handleSiafundOutput(w http.ResponseWriter, r *http.Request, 
 	var idhash crypto.Hash
 	if err := idhash.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
+		fmt.Fprintf(w, "id.LoadString: %v.\n", err)
 		return
 	}
 	id := types.SiafundOutputID(idhash)
 	sco, has := db.id2sfo[id]
 	if !has {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("no Siafund output with id %q.\n", idhex)))
+		fmt.Fprintf(w, "no Siafund output with id %q.\n", idhex)
 		return
 	}
 	data := db.siafundOutput(sco)
@@ -163,7 +163,7 @@ func (db *Database) handleHash(w http.ResponseWriter, r *http.Request, ps httpro
 	var id crypto.Hash
 	if err := id.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
+		fmt.Fprintf(w, "id.LoadString: %v.\n", err)
 		return
 	}
 	if _, has := db.id2block[types.BlockID(id)]; has {
