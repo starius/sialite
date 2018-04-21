@@ -97,13 +97,19 @@ func (db *Database) handleContract(w http.ResponseWriter, r *http.Request, ps ht
 
 func (db *Database) handleAddress(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	idhex := ps.ByName("idhex")
+	startWith := r.URL.Query().Get("startwith")
 	var id types.UnlockHash
 	if err := id.LoadString(idhex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("id.LoadString: %v.\n", err)))
 		return
 	}
-	history := db.addressHistory(id)
+	history, err := db.addressHistory(id, startWith)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf("db.addressHistory: %v.\n", err)))
+		return
+	}
 	enc := json.NewEncoder(w)
 	enc.Encode(history)
 }

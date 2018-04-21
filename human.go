@@ -1,7 +1,13 @@
 package main
 
-import "github.com/NebulousLabs/Sia/types"
-import "github.com/starius/sialite/human"
+import (
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+
+	"github.com/NebulousLabs/Sia/types"
+	"github.com/starius/sialite/human"
+)
 
 func (db *Database) source0(block *types.Block, index int) *human.Source {
 	return &human.Source{
@@ -210,15 +216,59 @@ func (db *Database) siafundOutput(sfo *SiafundOutput) *human.SiafundRecord {
 	return r
 }
 
-func (db *Database) addressHistory(address types.UnlockHash) *human.AddressHistory {
+type historyPosition struct {
+	ScoStart, SfoStart uint32
+}
+
+func (db *Database) addressHistory(address types.UnlockHash, startWith string) (*human.AddressHistory, error) {
+	scos := db.address2sco[address]
+	sfos := db.address2sfo[address]
+	var hi historyPosition
+	if startWith != "" {
+		startWithBytes, err := hex.DecodeString(startWith)
+		if err != nil {
+			return nil, fmt.Errorf("hex.DecodeString: %v", err)
+		}
+		if err := json.Unmarshal(startWithBytes, &hi); err != nil {
+			return nil, fmt.Errorf("json.Unmarshal: %v", err)
+		}
+		if hi.ScoStart > uint32(len(scos)) {
+			return nil, fmt.Errorf("ScoStart is too high")
+		}
+		if hi.SfoStart > uint32(len(sfos)) {
+			return nil, fmt.Errorf("SfoStart is too high")
+		}
+	} else {
+		hi.ScoStart = uint32(len(scos))
+		hi.SfoStart = uint32(len(sfos))
+	}
+	const maxRecords = 20
+	quota := maxRecords
 	h := &human.AddressHistory{
 		UnlockHash: address,
 	}
-	for _, sco := range db.address2sco[address] {
-		h.SiacoinHistory = append(h.SiacoinHistory, db.siacoinOutput(sco))
+	for i := int(hi.SfoStart) - 1; i >= 0; i-- {
+		if quota == 0 {
+			break
+		}
+		h.SiafundHistory = append(h.SiafundHistory, db.siafundOutput(sfos[i]))
+		quota--
+		hi.SfoStart--
 	}
-	for _, sfo := range db.address2sfo[address] {
-		h.SiafundHistory = append(h.SiafundHistory, db.siafundOutput(sfo))
+	for i := int(hi.ScoStart) - 1; i >= 0; i-- {
+		if quota == 0 {
+			break
+		}
+		h.SiacoinHistory = append(h.SiacoinHistory, db.siacoinOutput(scos[i]))
+		quota--
+		hi.ScoStart--
 	}
-	return h
+	if hi.ScoStart != 0 || hi.SfoStart != 0 {
+		nextBytes, err := json.Marshal(hi)
+		if err != nil {
+			return nil, fmt.Errorf("json.Marshal: %v", err)
+		}
+		h.Next = hex.EncodeToString(nextBytes)
+	}
+	return h, nil
 }

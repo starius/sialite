@@ -120,4 +120,5 @@ type AddressHistory struct {
 	UnlockHash     types.UnlockHash `json:"unlockhash"`
 	SiacoinHistory []*SiacoinRecord `json:"siacoin_history"`
 	SiafundHistory []*SiafundRecord `json:"siafund_history"`
+	Next           string
 }
