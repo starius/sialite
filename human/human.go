@@ -117,8 +117,10 @@ type SiafundRecord struct {
 }
 
 type AddressHistory struct {
-	UnlockHash     types.UnlockHash `json:"unlockhash"`
-	SiacoinHistory []*SiacoinRecord `json:"siacoin_history"`
-	SiafundHistory []*SiafundRecord `json:"siafund_history"`
-	Next           string
+	UnlockHash        types.UnlockHash `json:"unlockhash"`
+	SiacoinHistory    []*SiacoinRecord `json:"siacoin_history"`
+	SiafundHistory    []*SiafundRecord `json:"siafund_history"`
+	Next              string           `json:"next"`
+	SiacoinHistoryLen int              `json:"siacoin_history_len"`
+	SiafundHistoryLen int              `json:"siafund_history_len"`
 }

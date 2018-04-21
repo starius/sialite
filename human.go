@@ -245,7 +245,9 @@ func (db *Database) addressHistory(address types.UnlockHash, startWith string) (
 	const maxRecords = 20
 	quota := maxRecords
 	h := &human.AddressHistory{
-		UnlockHash: address,
+		UnlockHash:        address,
+		SiacoinHistoryLen: len(scos),
+		SiafundHistoryLen: len(sfos),
 	}
 	for i := int(hi.SfoStart) - 1; i >= 0; i-- {
 		if quota == 0 {
