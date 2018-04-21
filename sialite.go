@@ -25,6 +25,7 @@ var (
 	blockchain = flag.String("blockchain", "", "Input file with blockchain")
 	source     = flag.String("source", "", "Source of data (siad node)")
 	files      = flag.String("files", "", "Dir to write files")
+	nblocks    = flag.Int("nblocks", 0, "Approximate max number of blocks (0 = all)")
 )
 
 const (
@@ -378,7 +379,13 @@ func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
 func processBlocks(ctx context.Context, bchan chan *types.Block, storage *store.Storage) (*Database, error) {
 	log.Printf("processBlocks")
 	db := NewDatabase()
+	i := 0
 	for block := range bchan {
+		i++
+		if *nblocks != 0 && i > *nblocks {
+			log.Printf("processBlocks got %d blocks", *nblocks)
+			break
+		}
 		if err := db.addBlock(block, storage); err != nil {
 			return nil, err
 		}
@@ -466,10 +473,13 @@ func main() {
 	var db *Database
 	var wg sync.WaitGroup
 	wg.Add(2)
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		defer wg.Done()
 		if err := netlib.DownloadAllBlocks(ctx, bchan, f); err != nil {
-			panic(err)
+			if err != context.Canceled {
+				panic(err)
+			}
 		}
 		close(bchan)
 	}()
@@ -477,6 +487,9 @@ func main() {
 		defer wg.Done()
 		if db, err = processBlocks(ctx, bchan, storage); err != nil {
 			panic(err)
+		}
+		cancel()
+		for range bchan {
 		}
 	}()
 	wg.Wait()
