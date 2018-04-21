@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"io"
 	"log"
@@ -43,12 +44,13 @@ func (t *tee) Write(b []byte) (int, error) {
 
 func main() {
 	flag.Parse()
+	ctx := context.Background()
 	node := *source
 	if node == "" {
 		i := fastrand.Intn(len(modules.BootstrapPeers))
 		node = string(modules.BootstrapPeers[i])
 	}
-	conn, err := netlib.Connect(node)
+	conn, err := netlib.Connect(ctx, node)
 	if err != nil {
 		panic(err)
 	}
@@ -71,7 +73,7 @@ func main() {
 			sink: os.Stdout,
 		}, nil
 	}
-	if err := netlib.DownloadAllBlocks(bchan, f); err != nil {
+	if err := netlib.DownloadAllBlocks(ctx, bchan, f); err != nil {
 		panic(err)
 	}
 }

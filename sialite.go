@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -374,7 +375,7 @@ func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
 	return nil
 }
 
-func processBlocks(bchan chan *types.Block, storage *store.Storage) (*Database, error) {
+func processBlocks(ctx context.Context, bchan chan *types.Block, storage *store.Storage) (*Database, error) {
 	log.Printf("processBlocks")
 	db := NewDatabase()
 	for block := range bchan {
@@ -385,7 +386,7 @@ func processBlocks(bchan chan *types.Block, storage *store.Storage) (*Database, 
 	return db, nil
 }
 
-func (db *Database) fetchBlocks(sess *smux.Session, storage *store.Storage) error {
+func (db *Database) fetchBlocks(ctx context.Context, sess *smux.Session, storage *store.Storage) error {
 	stream, err := sess.OpenStream()
 	if err != nil {
 		return err
@@ -394,7 +395,7 @@ func (db *Database) fetchBlocks(sess *smux.Session, storage *store.Storage) erro
 	bchan := make(chan *types.Block, 20)
 	prevBlock := db.height2block[len(db.height2block)-1]
 	prevBlockID := db.block2id[prevBlock]
-	if _, err := netlib.DownloadBlocks(bchan, stream, prevBlockID); err != nil {
+	if _, err := netlib.DownloadBlocks(ctx, bchan, stream, prevBlockID); err != nil {
 		return err
 	}
 	close(bchan)
@@ -423,6 +424,7 @@ func (t *blockchainReader) Write(b []byte) (int, error) {
 
 func main() {
 	flag.Parse()
+	ctx := context.Background()
 	var storage *store.Storage
 	var err error
 	if *files != "" {
@@ -447,7 +449,7 @@ func main() {
 			i := fastrand.Intn(len(modules.BootstrapPeers))
 			node = string(modules.BootstrapPeers[i])
 		}
-		conn, err := netlib.Connect(node)
+		conn, err := netlib.Connect(ctx, node)
 		if err != nil {
 			panic(err)
 		}
@@ -466,14 +468,14 @@ func main() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		if err := netlib.DownloadAllBlocks(bchan, f); err != nil {
+		if err := netlib.DownloadAllBlocks(ctx, bchan, f); err != nil {
 			panic(err)
 		}
 		close(bchan)
 	}()
 	go func() {
 		defer wg.Done()
-		if db, err = processBlocks(bchan, storage); err != nil {
+		if db, err = processBlocks(ctx, bchan, storage); err != nil {
 			panic(err)
 		}
 	}()
@@ -493,7 +495,8 @@ func main() {
 	if sess != nil {
 		go func() {
 			for range time.NewTicker(5 * time.Second).C {
-				db.fetchBlocks(sess, storage)
+				ctx := context.Background()
+				db.fetchBlocks(ctx, sess, storage)
 			}
 		}()
 	}

@@ -1,6 +1,7 @@
 package netlib
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -19,7 +20,7 @@ type sessionHeader struct {
 	NetAddress modules.NetAddress
 }
 
-func Connect(node string) (net.Conn, error) {
+func Connect(ctx context.Context, node string) (net.Conn, error) {
 	log.Println("Using node: ", node)
 	conn, err := net.Dial("tcp", node)
 	if err != nil {
@@ -58,7 +59,7 @@ func Connect(node string) (net.Conn, error) {
 	return conn, nil
 }
 
-func DownloadBlocks(bchan chan *types.Block, conn io.ReadWriter, prevBlockID types.BlockID) (types.BlockID, error) {
+func DownloadBlocks(ctx context.Context, bchan chan *types.Block, conn io.ReadWriter, prevBlockID types.BlockID) (types.BlockID, error) {
 	var rpcName [8]byte
 	copy(rpcName[:], "SendBlocks")
 	if err := encoding.WriteObject(conn, rpcName); err != nil {
@@ -73,6 +74,11 @@ func DownloadBlocks(bchan chan *types.Block, conn io.ReadWriter, prevBlockID typ
 		return prevBlockID, err
 	}
 	for moreAvailable {
+		select {
+		case <-ctx.Done():
+			return prevBlockID, ctx.Err()
+		default:
+		}
 		// Read a slice of blocks from the wire.
 		var newBlocks []types.Block
 		if err := encoding.ReadObject(conn, &newBlocks, uint64(consensus.MaxCatchUpBlocks)*types.BlockSizeLimit); err != nil {
@@ -95,14 +101,14 @@ func DownloadBlocks(bchan chan *types.Block, conn io.ReadWriter, prevBlockID typ
 	return prevBlockID, nil
 }
 
-func DownloadAllBlocks(bchan chan *types.Block, sess func() (io.ReadWriter, error)) error {
+func DownloadAllBlocks(ctx context.Context, bchan chan *types.Block, sess func() (io.ReadWriter, error)) error {
 	prevBlockID := types.GenesisID
 	for {
 		stream, err := sess()
 		if err != nil {
 			return err
 		}
-		newPrevBlockID, err := DownloadBlocks(bchan, stream, prevBlockID)
+		newPrevBlockID, err := DownloadBlocks(ctx, bchan, stream, prevBlockID)
 		hadBlocks := newPrevBlockID != prevBlockID
 		log.Printf("DownloadBlocks returned %v, %v.", hadBlocks, err)
 		if err == nil || newPrevBlockID == prevBlockID {
