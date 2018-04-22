@@ -98,6 +98,7 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types
 		for _, tx := range block.Transactions {
 			txs = append(txs, tx.ID)
 			for _, si := range tx.SiacoinInputs {
+				scos = append(scos, si.ParentID)
 				addresses = append(addresses, si.Parent.UnlockHash)
 			}
 			for _, so := range tx.SiacoinOutputs {
@@ -105,6 +106,7 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types
 				scos = append(scos, so.ID)
 			}
 			for _, si := range tx.SiafundInputs {
+				sfos = append(sfos, si.ParentID)
 				addresses = append(addresses, si.Parent.UnlockHash)
 			}
 			for _, so := range tx.SiafundOutputs {
@@ -132,6 +134,41 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types
 					addresses = append(addresses, so.UnlockHash)
 					scos = append(scos, so.ID)
 				}
+			}
+		}
+	}
+	return
+}
+
+func findRare(ids []types.BlockID) (scos []types.SiacoinOutputID, sfos []types.SiafundOutputID) {
+	for _, blockID := range ids {
+		if len(scos) != 0 && len(sfos) != 0 {
+			break
+		}
+		resp, err := http.Get(*addr + "/block/" + blockID.String())
+		if err != nil {
+			panic(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			panic(resp.StatusCode)
+		}
+		dec := json.NewDecoder(resp.Body)
+		var block human.Block
+		if err := dec.Decode(&block); err != nil {
+			panic(err)
+		}
+		resp.Body.Close()
+		for _, tx := range block.Transactions {
+			for _, si := range tx.SiacoinInputs {
+				if si.Source.Nature == "sia_claim_output" {
+					scos = append(scos, si.ParentID)
+				}
+			}
+			for _, si := range tx.SiafundInputs {
+				sfos = append(sfos, si.ParentID)
+			}
+			for _, so := range tx.SiafundOutputs {
+				sfos = append(sfos, so.ID)
 			}
 		}
 	}
@@ -201,11 +238,11 @@ func doScos(scos []types.SiacoinOutputID) {
 			panic(err)
 		}
 		if resp.StatusCode != http.StatusOK {
-			panic(resp.StatusCode)
+			panic(resp.Status + " " + id.String())
 		}
 		dec := json.NewDecoder(resp.Body)
-		var sco human.SiacoinOutput
-		if err := dec.Decode(&sco); err != nil {
+		var record human.SiacoinRecord
+		if err := dec.Decode(&record); err != nil {
 			panic(err)
 		}
 		resp.Body.Close()
@@ -215,7 +252,7 @@ func doScos(scos []types.SiacoinOutputID) {
 		}
 		enc := json.NewEncoder(o)
 		enc.SetIndent("", "    ")
-		if err := enc.Encode(sco); err != nil {
+		if err := enc.Encode(record); err != nil {
 			panic(err)
 		}
 		o.Close()
@@ -232,8 +269,8 @@ func doSfos(sfos []types.SiafundOutputID) {
 			panic(resp.StatusCode)
 		}
 		dec := json.NewDecoder(resp.Body)
-		var sfo human.SiafundOutput
-		if err := dec.Decode(&sfo); err != nil {
+		var record human.SiafundRecord
+		if err := dec.Decode(&record); err != nil {
 			panic(err)
 		}
 		resp.Body.Close()
@@ -243,7 +280,7 @@ func doSfos(sfos []types.SiafundOutputID) {
 		}
 		enc := json.NewEncoder(o)
 		enc.SetIndent("", "    ")
-		if err := enc.Encode(sfo); err != nil {
+		if err := enc.Encode(record); err != nil {
 			panic(err)
 		}
 		o.Close()
@@ -259,6 +296,7 @@ func main() {
 	os.Mkdir(filepath.Join(*out, "siacoin-output"), 0755)
 	os.Mkdir(filepath.Join(*out, "siafund-output"), 0755)
 	blocks := doList()
+	blocks0 := blocks
 	r := rand.New(rand.NewSource(42)) // Deterministic random.
 	if len(blocks) > blockLimit {
 		r.Shuffle(len(blocks), func(i, j int) {
@@ -306,6 +344,10 @@ func main() {
 		})
 		sfos = sfos[:sfosLimit]
 	}
+	// Make sure we have Siacoin inputs from claims and siafunds.
+	scos2, sfos2 := findRare(blocks0)
+	scos = append(scos, scos2...)
+	sfos = append(sfos, sfos2...)
 	doTxs(txs)
 	doAddresses(addresses)
 	doScos(scos)
