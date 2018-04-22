@@ -85,14 +85,14 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types
 		for _, tx := range block.Transactions {
 			txs = append(txs, tx.ID)
 			for _, si := range tx.SiacoinInputs {
-				addresses = append(addresses, si.UnlockConditions.UnlockHash())
+				addresses = append(addresses, si.Parent.UnlockHash)
 			}
 			for _, so := range tx.SiacoinOutputs {
 				addresses = append(addresses, so.UnlockHash)
 				scos = append(scos, so.ID)
 			}
 			for _, si := range tx.SiafundInputs {
-				addresses = append(addresses, si.UnlockConditions.UnlockHash())
+				addresses = append(addresses, si.Parent.UnlockHash)
 			}
 			for _, so := range tx.SiafundOutputs {
 				addresses = append(addresses, so.UnlockHash)
