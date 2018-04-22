@@ -252,11 +252,14 @@ func (db *Database) addSfi(i *SiafundInput) {
 
 func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
 	height := len(db.height2block)
+	db.height2block = append(db.height2block, block)
 	id := block.ID()
 	log.Printf("processing block %d %s.", height, id)
+	if storage != nil {
+		return storage.Add(block)
+	}
 	db.block2height[block] = height
 	db.block2id[block] = id
-	db.height2block = append(db.height2block, block)
 	db.id2block[id] = block
 	sfpool := types.NewCurrency64(0)
 	if height != 0 {
@@ -366,9 +369,6 @@ func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
 		}
 	}
 	db.height2sfpool = append(db.height2sfpool, sfpool)
-	if storage != nil {
-		return storage.Add(block)
-	}
 	return nil
 }
 
@@ -454,6 +454,10 @@ func main() {
 	wg.Wait()
 
 	fmt.Println("Initial block download completed.")
+
+	if storage != nil {
+		return
+	}
 
 	fmt.Printf("len(tx2block) = %d\n", len(db.tx2block))
 	fmt.Printf("len(id2sco) = %d\n", len(db.id2sco))
