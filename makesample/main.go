@@ -98,30 +98,26 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types
 				addresses = append(addresses, so.UnlockHash)
 				sfos = append(sfos, so.ID)
 			}
-			for _, contract := range tx.FileContracts {
-				fcid := contract.ID
-				for i, so := range contract.ValidProofOutputs {
+			for _, c := range tx.FileContracts {
+				contract := c.History.Contract
+				for _, so := range contract.ValidProofOutputs {
 					addresses = append(addresses, so.UnlockHash)
-					// TODO: this `so` should be in "human" format and provide ID.
-					scos = append(scos, fcid.StorageProofOutputID(types.ProofValid, uint64(i)))
+					scos = append(scos, so.ID)
 				}
-				for i, so := range contract.MissedProofOutputs {
+				for _, so := range contract.MissedProofOutputs {
 					addresses = append(addresses, so.UnlockHash)
-					// TODO: this `so` should be in "human" format and provide ID.
-					scos = append(scos, fcid.StorageProofOutputID(types.ProofMissed, uint64(i)))
+					scos = append(scos, so.ID)
 				}
 			}
-			for _, rev := range tx.FileContractRevisions {
-				fcid := rev.ParentID
-				for i, so := range rev.NewValidProofOutputs {
+			for _, r := range tx.FileContractRevisions {
+				rev := r.History.Revisions[r.Index]
+				for _, so := range rev.NewValidProofOutputs {
 					addresses = append(addresses, so.UnlockHash)
-					// TODO: this `so` should be in "human" format and provide ID.
-					scos = append(scos, fcid.StorageProofOutputID(types.ProofValid, uint64(i)))
+					scos = append(scos, so.ID)
 				}
-				for i, so := range rev.NewMissedProofOutputs {
+				for _, so := range rev.NewMissedProofOutputs {
 					addresses = append(addresses, so.UnlockHash)
-					// TODO: this `so` should be in "human" format and provide ID.
-					scos = append(scos, fcid.StorageProofOutputID(types.ProofMissed, uint64(i)))
+					scos = append(scos, so.ID)
 				}
 			}
 		}
