@@ -93,13 +93,13 @@ type Transaction struct {
 }
 
 type Block struct {
-	Height       int                   `json:"height"`
-	ID           types.BlockID         `json:"id"`
-	ParentID     types.BlockID         `json:"parentid"`
-	Nonce        types.BlockNonce      `json:"nonce"`
-	Timestamp    types.Timestamp       `json:"timestamp"`
-	MinerPayouts []types.SiacoinOutput `json:"minerpayouts"`
-	Transactions []*Transaction        `json:"transactions"`
+	Height       int              `json:"height"`
+	ID           types.BlockID    `json:"id"`
+	ParentID     types.BlockID    `json:"parentid"`
+	Nonce        types.BlockNonce `json:"nonce"`
+	Timestamp    types.Timestamp  `json:"timestamp"`
+	MinerPayouts []*SiacoinOutput `json:"minerpayouts"`
+	Transactions []*Transaction   `json:"transactions"`
 }
 
 type SiacoinRecord struct {

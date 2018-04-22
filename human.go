@@ -162,12 +162,24 @@ func (db *Database) wrapTx(tx *types.Transaction) *human.Transaction {
 
 func (db *Database) wrapBlock(block *types.Block) *human.Block {
 	hb := &human.Block{
-		Height:       db.block2height[block],
-		ID:           db.block2id[block],
-		ParentID:     block.ParentID,
-		Nonce:        block.Nonce,
-		Timestamp:    block.Timestamp,
-		MinerPayouts: block.MinerPayouts,
+		Height:    db.block2height[block],
+		ID:        db.block2id[block],
+		ParentID:  block.ParentID,
+		Nonce:     block.Nonce,
+		Timestamp: block.Timestamp,
+	}
+	for i := range block.MinerPayouts {
+		sco := &block.MinerPayouts[i]
+		outid := block.MinerPayoutID(uint64(i))
+		hsco := &human.SiacoinOutput{
+			SiacoinOutput: sco,
+			ID:            outid,
+		}
+		sci, has := db.id2sci[outid]
+		if has {
+			hsco.Spent = db.source(sci.tx, sci.index)
+		}
+		hb.MinerPayouts = append(hb.MinerPayouts, hsco)
 	}
 	for i := range block.Transactions {
 		tx := &block.Transactions[i]
