@@ -80,18 +80,16 @@ type ContractHistory struct {
 }
 
 type FileContract struct {
-	*types.FileContract
 	ID      types.FileContractID `json:"id"`
 	History *ContractHistory     `json:"history"`
 }
 
 type FileContractRevision struct {
-	*types.FileContractRevision
+	Index   int              `json:"index"`
 	History *ContractHistory `json:"history"`
 }
 
 type StorageProof struct {
-	*types.StorageProof
 	History *ContractHistory `json:"history"`
 }
 

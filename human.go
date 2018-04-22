@@ -202,29 +202,26 @@ func (db *Database) wrapTx(tx *types.Transaction) *human.Transaction {
 		ht.SiafundOutputs = append(ht.SiafundOutputs, hsfo)
 	}
 	for i := range tx.FileContracts {
-		contract := &tx.FileContracts[i]
 		fcid := tx.FileContractID(uint64(i))
 		history := db.id2history[fcid]
 		ht.FileContracts = append(ht.FileContracts, &human.FileContract{
-			FileContract: contract,
-			ID:           fcid,
-			History:      db.contractHistory(history),
+			ID:      fcid,
+			History: db.contractHistory(history),
 		})
 	}
 	for i := range tx.FileContractRevisions {
 		rev := &tx.FileContractRevisions[i]
 		history := db.id2history[rev.ParentID]
 		ht.FileContractRevisions = append(ht.FileContractRevisions, &human.FileContractRevision{
-			FileContractRevision: rev,
-			History:              db.contractHistory(history),
+			Index:   i,
+			History: db.contractHistory(history),
 		})
 	}
 	for i := range tx.StorageProofs {
 		proof := &tx.StorageProofs[i]
 		history := db.id2history[proof.ParentID]
 		ht.StorageProofs = append(ht.StorageProofs, &human.StorageProof{
-			StorageProof: proof,
-			History:      db.contractHistory(history),
+			History: db.contractHistory(history),
 		})
 	}
 	return ht
