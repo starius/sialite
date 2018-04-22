@@ -178,29 +178,35 @@ func main() {
 	os.Mkdir(filepath.Join(*out, "addresses"), 0755)
 	blocks := doList()
 	r := rand.New(rand.NewSource(42)) // Deterministic random.
-	r.Shuffle(len(blocks), func(i, j int) {
-		// Swap.
-		t := blocks[i]
-		blocks[i] = blocks[j]
-		blocks[j] = t
-	})
-	someBlocks := blocks[:blockLimit]
-	txs, addresses := doBlocks(someBlocks)
-	r.Shuffle(len(txs), func(i, j int) {
-		// Swap.
-		t := txs[i]
-		txs[i] = txs[j]
-		txs[j] = t
-	})
-	someTxs := txs[:txLimit]
-	doTxs(someTxs)
-	r.Shuffle(len(addresses), func(i, j int) {
-		// Swap.
-		t := addresses[i]
-		addresses[i] = addresses[j]
-		addresses[j] = t
-	})
-	someAddresses := addresses[:addressesLimit]
-	doAddresses(someAddresses)
+	if len(blocks) > blockLimit {
+		r.Shuffle(len(blocks), func(i, j int) {
+			// Swap.
+			t := blocks[i]
+			blocks[i] = blocks[j]
+			blocks[j] = t
+		})
+		blocks = blocks[:blockLimit]
+	}
+	txs, addresses := doBlocks(blocks)
+	if len(txs) > txLimit {
+		r.Shuffle(len(txs), func(i, j int) {
+			// Swap.
+			t := txs[i]
+			txs[i] = txs[j]
+			txs[j] = t
+		})
+		txs = txs[:txLimit]
+	}
+	if len(addresses) > addressesLimit {
+		r.Shuffle(len(addresses), func(i, j int) {
+			// Swap.
+			t := addresses[i]
+			addresses[i] = addresses[j]
+			addresses[j] = t
+		})
+		addresses = addresses[:addressesLimit]
+	}
+	doTxs(txs)
+	doAddresses(addresses)
 	// TODO: contracts, outputs.
 }
