@@ -6,12 +6,15 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 
 	"github.com/NebulousLabs/Sia/build"
 	"github.com/NebulousLabs/Sia/encoding"
 	"github.com/NebulousLabs/Sia/modules"
 	"github.com/NebulousLabs/Sia/modules/consensus"
 	"github.com/NebulousLabs/Sia/types"
+	"github.com/NebulousLabs/fastrand"
+	"github.com/xtaci/smux"
 )
 
 type sessionHeader struct {
@@ -121,4 +124,46 @@ func DownloadAllBlocks(ctx context.Context, bchan chan *types.Block, sess func()
 		prevBlockID = newPrevBlockID
 	}
 	return nil
+}
+
+type blockchainReader struct {
+	impl io.Reader
+}
+
+func (t *blockchainReader) Read(b []byte) (int, error) {
+	return t.impl.Read(b)
+}
+
+func (t *blockchainReader) Write(b []byte) (int, error) {
+	// No operation.
+	return len(b), nil
+}
+
+func OpenOrConnect(ctx context.Context, file, node string) (*smux.Session, func() (io.ReadWriter, error), error) {
+	if file != "" {
+		bc, err := os.Open(file)
+		if err != nil {
+			return nil, nil, err
+		}
+		f := func() (io.ReadWriter, error) {
+			return &blockchainReader{impl: bc}, nil
+		}
+		return nil, f, nil
+	}
+	if node == "" {
+		i := fastrand.Intn(len(modules.BootstrapPeers))
+		node = string(modules.BootstrapPeers[i])
+	}
+	conn, err := Connect(ctx, node)
+	if err != nil {
+		return nil, nil, err
+	}
+	sess, err := smux.Client(conn, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	f := func() (io.ReadWriter, error) {
+		return sess.OpenStream()
+	}
+	return sess, f, nil
 }

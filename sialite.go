@@ -4,16 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/NebulousLabs/Sia/modules"
 	"github.com/NebulousLabs/Sia/types"
-	"github.com/NebulousLabs/fastrand"
 	"github.com/julienschmidt/httprouter"
 	"github.com/starius/sialite/netlib"
 	"github.com/starius/sialite/store"
@@ -416,19 +412,6 @@ func (db *Database) fetchBlocks(ctx context.Context, sess *smux.Session, storage
 	return nil
 }
 
-type blockchainReader struct {
-	impl io.Reader
-}
-
-func (t *blockchainReader) Read(b []byte) (int, error) {
-	return t.impl.Read(b)
-}
-
-func (t *blockchainReader) Write(b []byte) (int, error) {
-	// No operation.
-	return len(b), nil
-}
-
 func main() {
 	flag.Parse()
 	ctx := context.Background()
@@ -440,33 +423,9 @@ func main() {
 			log.Fatalf("store.New: %v", err)
 		}
 	}
-	var sess *smux.Session
-	var f func() (io.ReadWriter, error)
-	if *blockchain != "" {
-		bc, err := os.Open(*blockchain)
-		if err != nil {
-			panic(err)
-		}
-		f = func() (io.ReadWriter, error) {
-			return &blockchainReader{impl: bc}, nil
-		}
-	} else {
-		node := *source
-		if node == "" {
-			i := fastrand.Intn(len(modules.BootstrapPeers))
-			node = string(modules.BootstrapPeers[i])
-		}
-		conn, err := netlib.Connect(ctx, node)
-		if err != nil {
-			panic(err)
-		}
-		sess, err = smux.Client(conn, nil)
-		if err != nil {
-			panic(err)
-		}
-		f = func() (io.ReadWriter, error) {
-			return sess.OpenStream()
-		}
+	sess, f, err := netlib.OpenOrConnect(ctx, *blockchain, *source)
+	if err != nil {
+		panic(err)
 	}
 	bchan := make(chan *types.Block, 1000)
 	bchan <- &types.GenesisBlock
