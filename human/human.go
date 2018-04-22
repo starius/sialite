@@ -1,6 +1,7 @@
 package human
 
 import "github.com/NebulousLabs/Sia/types"
+import "github.com/NebulousLabs/Sia/crypto"
 
 type Source struct {
 	Block  types.BlockID        `json:"block"`
@@ -38,14 +39,33 @@ type SiafundOutput struct {
 }
 
 type Contract struct {
-	*types.FileContract
-	ID     types.FileContractID `json:"id"`
-	Source *Source              `json:"source"`
+	ID                 types.FileContractID `json:"id"`
+	Source             *Source              `json:"source"`
+	FileSize           uint64               `json:"filesize"`
+	FileMerkleRoot     crypto.Hash          `json:"filemerkleroot"`
+	WindowStart        types.BlockHeight    `json:"windowstart"`
+	WindowEnd          types.BlockHeight    `json:"windowend"`
+	Payout             types.Currency       `json:"payout"`
+	ValidProofOutputs  []*SiacoinOutput     `json:"validproofoutputs"`
+	MissedProofOutputs []*SiacoinOutput     `json:"missedproofoutputs"`
+	UnlockHash         types.UnlockHash     `json:"unlockhash"`
+	RevisionNumber     uint64               `json:"revisionnumber"`
 }
 
 type Revision struct {
-	*types.FileContractRevision
 	Source *Source `json:"source"`
+
+	ParentID          types.FileContractID   `json:"parentid"`
+	UnlockConditions  types.UnlockConditions `json:"unlockconditions"`
+	NewRevisionNumber uint64                 `json:"newrevisionnumber"`
+
+	NewFileSize           uint64            `json:"newfilesize"`
+	NewFileMerkleRoot     crypto.Hash       `json:"newfilemerkleroot"`
+	NewWindowStart        types.BlockHeight `json:"newwindowstart"`
+	NewWindowEnd          types.BlockHeight `json:"newwindowend"`
+	NewValidProofOutputs  []*SiacoinOutput  `json:"newvalidproofoutputs"`
+	NewMissedProofOutputs []*SiacoinOutput  `json:"newmissedproofoutputs"`
+	NewUnlockHash         types.UnlockHash  `json:"newunlockhash"`
 }
 
 type Proof struct {

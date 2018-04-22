@@ -26,18 +26,88 @@ func (db *Database) source(tx *types.Transaction, index int) *human.Source {
 }
 
 func (db *Database) contractHistory(history *ContractHistory) *human.ContractHistory {
+	contractTx := history.contract.tx
+	contract := &contractTx.FileContracts[history.contract.index]
+	fcid := contractTx.FileContractID(uint64(history.contract.index))
 	h := &human.ContractHistory{
 		Contract: human.Contract{
-			FileContract: &history.contract.tx.FileContracts[history.contract.index],
-			ID:           history.contract.tx.FileContractID(uint64(history.contract.index)),
-			Source:       db.source(history.contract.tx, history.contract.index),
+			ID:             fcid,
+			Source:         db.source(contractTx, history.contract.index),
+			FileSize:       contract.FileSize,
+			FileMerkleRoot: contract.FileMerkleRoot,
+			WindowStart:    contract.WindowStart,
+			WindowEnd:      contract.WindowEnd,
+			Payout:         contract.Payout,
+			UnlockHash:     contract.UnlockHash,
+			RevisionNumber: contract.RevisionNumber,
 		},
 	}
+	for i := range contract.ValidProofOutputs {
+		sco := &contract.ValidProofOutputs[i]
+		outid := fcid.StorageProofOutputID(types.ProofValid, uint64(i))
+		hsco := &human.SiacoinOutput{
+			SiacoinOutput: sco,
+			ID:            outid,
+		}
+		sci, has := db.id2sci[outid]
+		if has {
+			hsco.Spent = db.source(sci.tx, sci.index)
+		}
+		h.Contract.ValidProofOutputs = append(h.Contract.ValidProofOutputs, hsco)
+	}
+	for i := range contract.MissedProofOutputs {
+		sco := &contract.MissedProofOutputs[i]
+		outid := fcid.StorageProofOutputID(types.ProofMissed, uint64(i))
+		hsco := &human.SiacoinOutput{
+			SiacoinOutput: sco,
+			ID:            outid,
+		}
+		sci, has := db.id2sci[outid]
+		if has {
+			hsco.Spent = db.source(sci.tx, sci.index)
+		}
+		h.Contract.MissedProofOutputs = append(h.Contract.MissedProofOutputs, hsco)
+	}
 	for _, rev := range history.revs {
-		h.Revisions = append(h.Revisions, human.Revision{
-			FileContractRevision: &rev.tx.FileContractRevisions[rev.index],
-			Source:               db.source(rev.tx, rev.index),
-		})
+		r := &rev.tx.FileContractRevisions[rev.index]
+		hrev := human.Revision{
+			Source:            db.source(rev.tx, rev.index),
+			ParentID:          r.ParentID,
+			UnlockConditions:  r.UnlockConditions,
+			NewRevisionNumber: r.NewRevisionNumber,
+			NewFileSize:       r.NewFileSize,
+			NewFileMerkleRoot: r.NewFileMerkleRoot,
+			NewWindowStart:    r.NewWindowStart,
+			NewWindowEnd:      r.NewWindowEnd,
+			NewUnlockHash:     r.NewUnlockHash,
+		}
+		for i := range r.NewValidProofOutputs {
+			sco := &r.NewValidProofOutputs[i]
+			outid := fcid.StorageProofOutputID(types.ProofValid, uint64(i))
+			hsco := &human.SiacoinOutput{
+				SiacoinOutput: sco,
+				ID:            outid,
+			}
+			sci, has := db.id2sci[outid]
+			if has {
+				hsco.Spent = db.source(sci.tx, sci.index)
+			}
+			hrev.NewValidProofOutputs = append(hrev.NewValidProofOutputs, hsco)
+		}
+		for i := range r.NewMissedProofOutputs {
+			sco := &r.NewMissedProofOutputs[i]
+			outid := fcid.StorageProofOutputID(types.ProofMissed, uint64(i))
+			hsco := &human.SiacoinOutput{
+				SiacoinOutput: sco,
+				ID:            outid,
+			}
+			sci, has := db.id2sci[outid]
+			if has {
+				hsco.Spent = db.source(sci.tx, sci.index)
+			}
+			hrev.NewMissedProofOutputs = append(hrev.NewMissedProofOutputs, hsco)
+		}
+		h.Revisions = append(h.Revisions, hrev)
 	}
 	if history.proof != nil {
 		h.Proof = &human.Proof{
