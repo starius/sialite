@@ -19,6 +19,7 @@ const (
 	addressesLimit = 1000
 	scosLimit      = 1000
 	sfosLimit      = 1000
+	contractsLimit = 1000
 )
 
 var (
@@ -65,7 +66,7 @@ func doList() (ids []types.BlockID) {
 	return
 }
 
-func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types.UnlockHash, scos []types.SiacoinOutputID, sfos []types.SiafundOutputID) {
+func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types.UnlockHash, scos []types.SiacoinOutputID, sfos []types.SiafundOutputID, contracts []types.FileContractID) {
 	for _, blockID := range ids {
 		resp, err := http.Get(*addr + "/block/" + blockID.String())
 		if err != nil {
@@ -115,6 +116,7 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types
 			}
 			for _, c := range tx.FileContracts {
 				contract := c.History.Contract
+				contracts = append(contracts, contract.ID)
 				for _, so := range contract.ValidProofOutputs {
 					addresses = append(addresses, so.UnlockHash)
 					scos = append(scos, so.ID)
@@ -126,6 +128,7 @@ func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types
 			}
 			for _, r := range tx.FileContractRevisions {
 				rev := r.History.Revisions[r.Index]
+				contracts = append(contracts, rev.ParentID)
 				for _, so := range rev.NewValidProofOutputs {
 					addresses = append(addresses, so.UnlockHash)
 					scos = append(scos, so.ID)
@@ -287,6 +290,34 @@ func doSfos(sfos []types.SiafundOutputID) {
 	}
 }
 
+func doContracts(contracts []types.FileContractID) {
+	for _, id := range contracts {
+		resp, err := http.Get(*addr + "/contract/" + id.String())
+		if err != nil {
+			panic(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			panic(resp.Status + " " + id.String())
+		}
+		dec := json.NewDecoder(resp.Body)
+		var history human.ContractHistory
+		if err := dec.Decode(&history); err != nil {
+			panic(err)
+		}
+		resp.Body.Close()
+		o, err := os.Create(filepath.Join(*out, "contracts", id.String()+".json"))
+		if err != nil {
+			panic(err)
+		}
+		enc := json.NewEncoder(o)
+		enc.SetIndent("", "    ")
+		if err := enc.Encode(history); err != nil {
+			panic(err)
+		}
+		o.Close()
+	}
+}
+
 func main() {
 	flag.Parse()
 	os.Mkdir(*out, 0755)
@@ -295,6 +326,7 @@ func main() {
 	os.Mkdir(filepath.Join(*out, "addresses"), 0755)
 	os.Mkdir(filepath.Join(*out, "siacoin-output"), 0755)
 	os.Mkdir(filepath.Join(*out, "siafund-output"), 0755)
+	os.Mkdir(filepath.Join(*out, "contracts"), 0755)
 	blocks := doList()
 	blocks0 := blocks
 	r := rand.New(rand.NewSource(42)) // Deterministic random.
@@ -307,7 +339,7 @@ func main() {
 		})
 		blocks = blocks[:blockLimit]
 	}
-	txs, addresses, scos, sfos := doBlocks(blocks)
+	txs, addresses, scos, sfos, contracts := doBlocks(blocks)
 	if len(txs) > txLimit {
 		r.Shuffle(len(txs), func(i, j int) {
 			// Swap.
@@ -344,6 +376,15 @@ func main() {
 		})
 		sfos = sfos[:sfosLimit]
 	}
+	if len(contracts) > contractsLimit {
+		r.Shuffle(len(contracts), func(i, j int) {
+			// Swap.
+			t := contracts[i]
+			contracts[i] = contracts[j]
+			contracts[j] = t
+		})
+		contracts = contracts[:contractsLimit]
+	}
 	// Make sure we have Siacoin inputs from claims and siafunds.
 	scos2, sfos2 := findRare(blocks0)
 	scos = append(scos, scos2...)
@@ -352,5 +393,5 @@ func main() {
 	doAddresses(addresses)
 	doScos(scos)
 	doSfos(sfos)
-	// TODO: contracts.
+	doContracts(contracts)
 }
