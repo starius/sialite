@@ -12,12 +12,15 @@ import (
 )
 
 func (db *Database) handleBlocks(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	var ids []types.BlockID
-	for _, block := range db.height2block {
-		ids = append(ids, db.block2id[block])
+	startWith := r.URL.Query().Get("startwith")
+	headers, err := db.headers(startWith)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "db.headers: %v.\n", err)
+		return
 	}
 	enc := json.NewEncoder(w)
-	enc.Encode(ids)
+	enc.Encode(headers)
 }
 
 func (db *Database) handleBlock(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"os"
@@ -25,31 +26,43 @@ var (
 	out  = flag.String("out", "sample", "Directory to write sample")
 )
 
-func doList() []types.BlockID {
-	resp, err := http.Get(*addr + "/blocks")
-	if err != nil {
-		panic(err)
+func doList() (ids []types.BlockID) {
+	startWith := ""
+	for {
+		n := len(ids)
+		resp, err := http.Get(*addr + "/blocks?startwith=" + startWith)
+		if err != nil {
+			panic(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			panic(resp.StatusCode)
+		}
+		dec := json.NewDecoder(resp.Body)
+		var headers human.BlockHeaders
+		if err := dec.Decode(&headers); err != nil {
+			panic(err)
+		}
+		resp.Body.Close()
+		fname := fmt.Sprintf("blocks%07d.json", n)
+		o, err := os.Create(filepath.Join(*out, fname))
+		if err != nil {
+			panic(err)
+		}
+		enc := json.NewEncoder(o)
+		enc.SetIndent("", "    ")
+		if err := enc.Encode(headers); err != nil {
+			panic(err)
+		}
+		o.Close()
+		for _, h := range headers.Headers {
+			ids = append(ids, h.ID)
+		}
+		if headers.Next == "" {
+			break
+		}
+		startWith = headers.Next
 	}
-	if resp.StatusCode != http.StatusOK {
-		panic(resp.StatusCode)
-	}
-	dec := json.NewDecoder(resp.Body)
-	var ids []types.BlockID
-	if err := dec.Decode(&ids); err != nil {
-		panic(err)
-	}
-	resp.Body.Close()
-	o, err := os.Create(filepath.Join(*out, "blocks.json"))
-	if err != nil {
-		panic(err)
-	}
-	enc := json.NewEncoder(o)
-	enc.SetIndent("", "    ")
-	if err := enc.Encode(ids); err != nil {
-		panic(err)
-	}
-	o.Close()
-	return ids
+	return
 }
 
 func doBlocks(ids []types.BlockID) (txs []types.TransactionID, addresses []types.UnlockHash, scos []types.SiacoinOutputID, sfos []types.SiafundOutputID) {

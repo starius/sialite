@@ -9,6 +9,47 @@ import (
 	"github.com/starius/sialite/human"
 )
 
+type blocksPosition struct {
+	Start uint32
+}
+
+func (db *Database) headers(startWith string) (*human.BlockHeaders, error) {
+	const maxRecords = 50000
+	var bp blocksPosition
+	if startWith != "" {
+		startWithBytes, err := hex.DecodeString(startWith)
+		if err != nil {
+			return nil, fmt.Errorf("hex.DecodeString: %v", err)
+		}
+		if err := json.Unmarshal(startWithBytes, &bp); err != nil {
+			return nil, fmt.Errorf("json.Unmarshal: %v", err)
+		}
+		if bp.Start > uint32(len(db.height2block)) {
+			return nil, fmt.Errorf("Start is too high")
+		}
+	}
+	h := &human.BlockHeaders{
+		Headers: make([]human.BlockHeader, 0, maxRecords),
+	}
+	for i := bp.Start; i < uint32(len(db.height2block)) && i-bp.Start < maxRecords; i++ {
+		block := db.height2block[i]
+		h.Headers = append(h.Headers, human.BlockHeader{
+			ID:        db.block2id[block],
+			Nonce:     block.Nonce,
+			Timestamp: block.Timestamp,
+		})
+	}
+	if bp.Start+maxRecords < uint32(len(db.height2block)) {
+		bp.Start = bp.Start + maxRecords
+		nextBytes, err := json.Marshal(bp)
+		if err != nil {
+			return nil, fmt.Errorf("json.Marshal: %v", err)
+		}
+		h.Next = hex.EncodeToString(nextBytes)
+	}
+	return h, nil
+}
+
 func (db *Database) source0(block *types.Block, index int) *human.Source {
 	return &human.Source{
 		Block:  db.block2id[block],
@@ -229,11 +270,13 @@ func (db *Database) wrapTx(tx *types.Transaction) *human.Transaction {
 
 func (db *Database) wrapBlock(block *types.Block) *human.Block {
 	hb := &human.Block{
-		Height:    db.block2height[block],
-		ID:        db.block2id[block],
-		ParentID:  block.ParentID,
-		Nonce:     block.Nonce,
-		Timestamp: block.Timestamp,
+		Height:   db.block2height[block],
+		ParentID: block.ParentID,
+		BlockHeader: human.BlockHeader{
+			ID:        db.block2id[block],
+			Nonce:     block.Nonce,
+			Timestamp: block.Timestamp,
+		},
 	}
 	for i := range block.MinerPayouts {
 		sco := &block.MinerPayouts[i]

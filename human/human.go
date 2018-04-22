@@ -3,6 +3,17 @@ package human
 import "github.com/NebulousLabs/Sia/types"
 import "github.com/NebulousLabs/Sia/crypto"
 
+type BlockHeader struct {
+	ID        types.BlockID    `json:"id"`
+	Nonce     types.BlockNonce `json:"nonce"`
+	Timestamp types.Timestamp  `json:"timestamp"`
+}
+
+type BlockHeaders struct {
+	Headers []BlockHeader `json:"headers"`
+	Next    string        `json:"next"`
+}
+
 type Source struct {
 	Block  types.BlockID        `json:"block"`
 	Blocki int                  `json:"blocki"`
@@ -111,11 +122,9 @@ type Transaction struct {
 }
 
 type Block struct {
+	BlockHeader
 	Height       int              `json:"height"`
-	ID           types.BlockID    `json:"id"`
 	ParentID     types.BlockID    `json:"parentid"`
-	Nonce        types.BlockNonce `json:"nonce"`
-	Timestamp    types.Timestamp  `json:"timestamp"`
 	MinerPayouts []*SiacoinOutput `json:"minerpayouts"`
 	Transactions []*Transaction   `json:"transactions"`
 }
