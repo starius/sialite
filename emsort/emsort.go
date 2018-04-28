@@ -32,43 +32,37 @@ type SortedWriter interface {
 // less than b.
 type Less func(a []byte, b []byte) bool
 
-// Chunk is a function that chunks data read from the given io.Reader into items
-// for sorting.
-type Chunk func(io.Reader) ([]byte, error)
-
 // New constructs a new SortedWriter that wraps out, chunks data into sortable
-// items using the given Chunk, compares them using the given Less and limits
+// items using the given chunk size, compares them using the given Less and limits
 // the amount of RAM used to approximately memLimit.
-func New(out io.Writer, chunk Chunk, less Less, memLimit int) (SortedWriter, error) {
+func New(out io.Writer, chunkSize int, less Less, memLimit int) (SortedWriter, error) {
 	tmpDir, err := ioutil.TempDir("", "emsort")
 	if err != nil {
 		return nil, err
 	}
 
 	return &sorted{
-		tmpDir:   tmpDir,
-		out:      out,
-		chunk:    chunk,
-		less:     less,
-		memLimit: memLimit,
+		tmpDir:    tmpDir,
+		out:       out,
+		less:      less,
+		memLimit:  memLimit,
+		chunkSize: chunkSize,
 	}, nil
 }
 
 type sorted struct {
-	tmpDir   string
-	out      io.Writer
-	chunk    Chunk
-	less     Less
-	memLimit int
-	memUsed  int
-	numFiles int
-	vals     [][]byte
+	tmpDir    string
+	out       io.Writer
+	less      Less
+	memLimit  int
+	chunkSize int
+	numFiles  int
+	vals      []byte
 }
 
 func (s *sorted) Write(b []byte) (int, error) {
-	s.vals = append(s.vals, b)
-	s.memUsed += len(b)
-	if s.memUsed >= s.memLimit {
+	s.vals = append(s.vals, b...)
+	if len(s.vals) >= s.memLimit {
 		flushErr := s.flush()
 		if flushErr != nil {
 			return 0, flushErr
@@ -78,38 +72,28 @@ func (s *sorted) Write(b []byte) (int, error) {
 }
 
 func (s *sorted) flush() error {
-	sort.Sort(&inmemory{s.vals, s.less})
+	sort.Sort(&inmemory{s.vals, s.less, s.chunkSize})
 	file, err := os.OpenFile(filepath.Join(s.tmpDir, strconv.Itoa(s.numFiles)), os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	s.numFiles++
-	s.memUsed = 0
-	out := bufio.NewWriterSize(file, 65536)
-	for _, val := range s.vals {
-		_, writeErr := out.Write(val)
-		if writeErr != nil {
-			file.Close()
-			return writeErr
-		}
-	}
-	err = out.Flush()
-	if err != nil {
+	_, writeErr := file.Write(s.vals)
+	if writeErr != nil {
 		file.Close()
+		return writeErr
+	}
+	if err := file.Close(); err != nil {
 		return err
 	}
-	closeErr := file.Close()
-	if closeErr != nil {
-		return closeErr
-	}
-	s.vals = make([][]byte, 0, len(s.vals))
+	s.vals = s.vals[:0]
 	return nil
 }
 
 func (s *sorted) Close() error {
 	defer os.RemoveAll(s.tmpDir)
 
-	if s.memUsed > 0 {
+	if len(s.vals) > 0 {
 		flushErr := s.flush()
 		if flushErr != nil {
 			return flushErr
@@ -119,14 +103,14 @@ func (s *sorted) Close() error {
 	// Free memory used by last read vals
 	s.vals = nil
 
-	files := make(map[int]*bufio.Reader, s.numFiles)
+	files := make([]*bufio.Reader, s.numFiles)
 	for i := 0; i < s.numFiles; i++ {
 		file, err := os.OpenFile(filepath.Join(s.tmpDir, strconv.Itoa(i)), os.O_RDONLY, 0)
 		if err != nil {
 			return fmt.Errorf("Unable to open temp file: %v", err)
 		}
 		defer file.Close()
-		files[i] = bufio.NewReaderSize(file, 65536)
+		files[i] = bufio.NewReaderSize(file, s.memLimit/s.numFiles)
 	}
 
 	if s.numFiles == 1 {
@@ -151,88 +135,84 @@ func (s *sorted) Close() error {
 	}
 }
 
-func (s *sorted) finalSort(files map[int]*bufio.Reader) error {
-
-	entries := &entryHeap{less: s.less}
-	perFileLimit := s.memLimit / (s.numFiles + 1)
-	fillBuffer := func() error {
-		for i := 0; i < len(files); i++ {
-			file := files[i]
-			amountRead := 0
-			for {
-				b, err := s.chunk(file)
-				if err == io.EOF {
-					delete(files, i)
-					break
-				}
-				if err != nil {
-					return fmt.Errorf("Error filling buffer: %v", err)
-				}
-				amountRead += len(b)
-				heap.Push(entries, &entry{i, b})
-				if amountRead >= perFileLimit {
-					break
-				}
-			}
-		}
-
-		return nil
+func (s *sorted) finalSort(files []*bufio.Reader) error {
+	entries := &entryHeap{
+		less:    s.less,
+		entries: make([]*entry, len(files)),
 	}
-
-	for {
-		if len(entries.entries) == 0 {
-			fillErr := fillBuffer()
-			if fillErr != nil {
-				return fillErr
-			}
+	for i, file := range files {
+		e := &entry{
+			file: file,
+			val:  make([]byte, s.chunkSize),
 		}
-		if len(entries.entries) == 0 {
-			// Nothing left with which to fill buffer, stop
+		has, err := e.Read()
+		if err != nil {
+			return err
+		}
+		if !has {
+			return fmt.Errorf("Unexpected empty file")
+		}
+		entries.entries[i] = e
+	}
+	heap.Init(entries)
+	for {
+		e := heap.Pop(entries).(*entry)
+		if n, err := s.out.Write(e.val); err != nil {
+			return fmt.Errorf("Error writing to final output: %v", err)
+		} else if n != len(e.val) {
+			return io.ErrShortWrite
+		}
+		if has, err := e.Read(); err != nil {
+			return err
+		} else if has {
+			heap.Push(entries, e)
+		} else if entries.Len() == 0 {
 			break
 		}
-		_e := heap.Pop(entries)
-		e := _e.(*entry)
-		_, writeErr := s.out.Write(e.val)
-		if writeErr != nil {
-			return fmt.Errorf("Error writing to final output: %v", writeErr)
-		}
-		file := files[e.fileIdx]
-		if file != nil {
-			b, err := s.chunk(file)
-			if err == io.EOF {
-				delete(files, e.fileIdx)
-				continue
-			}
-			if err != nil {
-				return fmt.Errorf("Error replacing entry on heap: %v", err)
-			}
-			heap.Push(entries, &entry{e.fileIdx, b})
-		}
 	}
-
 	return nil
 }
 
 type inmemory struct {
-	vals [][]byte
-	less func(a []byte, b []byte) bool
+	vals      []byte
+	less      func(a []byte, b []byte) bool
+	chunkSize int
 }
 
 func (im *inmemory) Len() int {
-	return len(im.vals)
+	return len(im.vals) / im.chunkSize
 }
 
 func (im *inmemory) Less(i, j int) bool {
-	return im.less(im.vals[i], im.vals[j])
+	iStart := i * im.chunkSize
+	jStart := j * im.chunkSize
+	return im.less(im.vals[iStart:iStart+im.chunkSize], im.vals[jStart:jStart+im.chunkSize])
 }
 
 func (im *inmemory) Swap(i, j int) {
-	im.vals[i], im.vals[j] = im.vals[j], im.vals[i]
+	iStart := i * im.chunkSize
+	jStart := j * im.chunkSize
+	iSlice := im.vals[iStart : iStart+im.chunkSize]
+	jSlice := im.vals[jStart : jStart+im.chunkSize]
+	tSlice := make([]byte, im.chunkSize)
+	copy(tSlice, iSlice)
+	copy(iSlice, jSlice)
+	copy(jSlice, tSlice)
 }
 
 type entry struct {
-	fileIdx int
-	val     []byte
+	file io.Reader
+	val  []byte
+}
+
+func (e *entry) Read() (bool, error) {
+	_, err := io.ReadFull(e.file, e.val)
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 type entryHeap struct {

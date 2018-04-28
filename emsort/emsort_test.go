@@ -14,13 +14,13 @@ import (
 
 func TestRoundTripMultipleFiles(t *testing.T) {
 	w := &assertingWriter{&bytes.Buffer{}}
-	s, err := New(w, chunk, less, 1000)
+	s, err := New(w, 8, less, 1000)
 	doTestRoundTrip(t, w, s, err)
 }
 
 func TestRoundTripSingleFile(t *testing.T) {
 	w := &assertingWriter{&bytes.Buffer{}}
-	s, err := New(w, chunk, less, 100000000)
+	s, err := New(w, 8, less, 100000000)
 	doTestRoundTrip(t, w, s, err)
 }
 
@@ -42,12 +42,6 @@ func doTestRoundTrip(t *testing.T, w *assertingWriter, s SortedWriter, err error
 		}
 		w.finish(t)
 	}
-}
-
-func chunk(r io.Reader) ([]byte, error) {
-	b := make([]byte, 8)
-	_, err := io.ReadFull(r, b)
-	return b, err
 }
 
 func less(a []byte, b []byte) bool {
