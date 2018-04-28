@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 )
 
-func Build(pageLen, keyLen, valueLen int, sortedInput io.Reader, data, index io.Writer, tempfile *os.File) error {
+func Build(pageLen, keyLen, valueLen, prefixLen int, sortedInput io.Reader, data, index io.Writer) error {
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen
 	rec := make([]byte, keyLen+valueLen)
@@ -16,11 +15,11 @@ func Build(pageLen, keyLen, valueLen int, sortedInput io.Reader, data, index io.
 	value := rec[keyLen:]
 	prevKey := make([]byte, keyLen)
 	page := make([]byte, pageLen)
+	prevPage := make([]byte, pageLen)
+	hasPrevPage := false
 	keyStart := 0
 	valueStart := valuesStart
 	npages := 0
-	prefixLen := 1
-	lastKeyInPage := make([]byte, keyLen)
 	for {
 		if _, err := io.ReadFull(sortedInput, rec); err == io.EOF {
 			break
@@ -29,30 +28,45 @@ func Build(pageLen, keyLen, valueLen int, sortedInput io.Reader, data, index io.
 		}
 		if c := bytes.Compare(prevKey, key); c == 0 {
 			// Skip duplicats.
+			// TODO return error
 			continue
 		} else if c == 1 {
 			return fmt.Errorf("Input is not ordered")
 		}
 		copy(prevKey, key)
-		if keyStart == 0 {
-			if n, err := tempfile.WriteAt(key, int64(npages*keyLen)); err != nil {
+		if hasPrevPage {
+			// Move some records from prevPage to this page to have prefixes
+			// different for last of prevPage and first of this page.
+			remove := 0
+			for k := keyStart - keyLen; k >= 0; k -= keyLen {
+				if !bytes.Equal(prevPage[k:k+prefixLen], key[:prefixLen]) {
+					break
+				}
+				remove++
+			}
+			if remove*keyLen == keyStart {
+				return fmt.Errorf("Prefix is too short")
+			}
+			start := keyStart - remove*keyLen
+			n1 := copy(page, prevPage[start:keyStart])
+			keyStart = start
+			start = valueStart - remove*valueLen
+			n2 := copy(page[valuesStart:], prevPage[start:valueStart])
+			valueStart = start
+			// Fill empty slots with FF.
+			for i := keyStart; i < valuesStart; i++ {
+				prevPage[i] = 0xFF
+			}
+			for i := valueStart; i < pageLen; i++ {
+				prevPage[i] = 0xFF
+			}
+			if n, err := data.Write(prevPage); err != nil {
 				return err
-			} else if n != keyLen {
+			} else if n != pageLen {
 				return io.ErrShortWrite
 			}
-			if npages != 0 {
-				prefixNeeded := 0
-				for j := 0; j < keyLen; j++ {
-					if lastKeyInPage[j] != key[j] {
-						prefixNeeded = j + 1
-						break
-					}
-				}
-				if prefixNeeded > prefixLen {
-					prefixLen = prefixNeeded
-				}
-			}
-			npages++
+			keyStart = n1
+			valueStart = valuesStart + n2
 		}
 		nextKeyStart := keyStart + keyLen
 		nextValueStart := valueStart + valueLen
@@ -60,17 +74,25 @@ func Build(pageLen, keyLen, valueLen int, sortedInput io.Reader, data, index io.
 		copy(page[valueStart:nextValueStart], value)
 		keyStart = nextKeyStart
 		valueStart = nextValueStart
-		if keyStart == valuesStart {
-			// Page is full.
-			if n, err := data.Write(page); err != nil {
+		if hasPrevPage || npages == 0 {
+			// Write prefix.
+			if n, err := index.Write(page[:prefixLen]); err != nil {
 				return err
-			} else if n != pageLen {
+			} else if n != prefixLen {
 				return io.ErrShortWrite
 			}
-			keyStart = 0
-			valueStart = valuesStart
-			copy(lastKeyInPage, key)
+			npages++
+			hasPrevPage = false
 		}
+		if keyStart == valuesStart {
+			t := prevPage
+			prevPage = page
+			page = t
+			hasPrevPage = true
+		}
+	}
+	if hasPrevPage {
+		page = prevPage
 	}
 	if keyStart != 0 {
 		// Partial page. Fill empty slots with FF.
@@ -84,19 +106,6 @@ func Build(pageLen, keyLen, valueLen int, sortedInput io.Reader, data, index io.
 		if n, err := data.Write(page); err != nil {
 			return err
 		} else if n != pageLen {
-			return io.ErrShortWrite
-		}
-	}
-	prefix := key[:prefixLen]
-	for i := 0; i < npages; i++ {
-		if n, err := tempfile.ReadAt(prefix, int64(i*keyLen)); err != nil {
-			return err
-		} else if n != prefixLen {
-			return fmt.Errorf("short read")
-		}
-		if n, err := index.Write(prefix); err != nil {
-			return err
-		} else if n != prefixLen {
 			return io.ErrShortWrite
 		}
 	}
