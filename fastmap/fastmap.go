@@ -46,10 +46,12 @@ func (w *Writer) Write(rec []byte) (int, error) {
 	}
 	key := rec[:w.keyLen]
 	value := rec[w.keyLen:]
-	if c := bytes.Compare(w.prevKey, key); c == 0 {
-		return 0, fmt.Errorf("Input has duplicates")
-	} else if c == 1 {
-		return 0, fmt.Errorf("Input is not ordered")
+	if w.npages != 0 {
+		if c := bytes.Compare(w.prevKey, key); c == 0 {
+			return 0, fmt.Errorf("Input has duplicates")
+		} else if c == 1 {
+			return 0, fmt.Errorf("Input is not ordered")
+		}
 	}
 	copy(w.prevKey, key)
 	if w.hasPrevPage {
