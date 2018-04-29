@@ -100,7 +100,7 @@ func (s *sorted) Close() error {
 		if copyErr != nil {
 			return fmt.Errorf("Unable to copy sorted data to output: %v", copyErr)
 		}
-	} else {
+	} else if len(s.sizes) > 1 {
 		// Need to perform final sort across intermediary files
 		finalSortErr := s.finalSort(files)
 		if finalSortErr != nil {

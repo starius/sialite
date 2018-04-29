@@ -36,6 +36,26 @@ func TestRoundTripSingleFile(t *testing.T) {
 	doTestRoundTrip(t, w, s, err)
 }
 
+func TestEmpty(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "emsort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+	w := bytes.NewBuffer(nil)
+	s, err := New(w, 8, less, 100000000, tmpfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Do not write anything.
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if w.Len() != 0 {
+		t.Fatal("Expected the buffer to be empty")
+	}
+}
+
 func doTestRoundTrip(t *testing.T, w *assertingWriter, s SortedWriter, err error) {
 	if assert.NoError(t, err) {
 		halfMaxInt := int64(math.MaxInt64 / 2)
