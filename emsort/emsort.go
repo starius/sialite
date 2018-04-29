@@ -10,11 +10,8 @@ import (
 	"container/heap"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"sort"
-	"strconv"
 )
 
 // SortedWriter is an io.WriteCloser that sorts its output on writing. Each
@@ -35,14 +32,9 @@ type Less func(a []byte, b []byte) bool
 // New constructs a new SortedWriter that wraps out, chunks data into sortable
 // items using the given chunk size, compares them using the given Less and limits
 // the amount of RAM used to approximately memLimit.
-func New(out io.Writer, chunkSize int, less Less, memLimit int) (SortedWriter, error) {
-	tmpDir, err := ioutil.TempDir("", "emsort")
-	if err != nil {
-		return nil, err
-	}
-
+func New(out io.Writer, chunkSize int, less Less, memLimit int, tmpfile *os.File) (SortedWriter, error) {
 	return &sorted{
-		tmpDir:    tmpDir,
+		tmpfile:   tmpfile,
 		out:       out,
 		less:      less,
 		memLimit:  memLimit,
@@ -51,12 +43,12 @@ func New(out io.Writer, chunkSize int, less Less, memLimit int) (SortedWriter, e
 }
 
 type sorted struct {
-	tmpDir    string
+	tmpfile   *os.File
 	out       io.Writer
 	less      Less
 	memLimit  int
 	chunkSize int
-	numFiles  int
+	sizes     []int
 	vals      []byte
 }
 
@@ -73,26 +65,17 @@ func (s *sorted) Write(b []byte) (int, error) {
 
 func (s *sorted) flush() error {
 	sort.Sort(&inmemory{s.vals, s.less, s.chunkSize})
-	file, err := os.OpenFile(filepath.Join(s.tmpDir, strconv.Itoa(s.numFiles)), os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
+	if n, err := s.tmpfile.Write(s.vals); err != nil {
 		return err
+	} else if n != len(s.vals) {
+		return io.ErrShortWrite
 	}
-	s.numFiles++
-	_, writeErr := file.Write(s.vals)
-	if writeErr != nil {
-		file.Close()
-		return writeErr
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
+	s.sizes = append(s.sizes, len(s.vals))
 	s.vals = s.vals[:0]
 	return nil
 }
 
 func (s *sorted) Close() error {
-	defer os.RemoveAll(s.tmpDir)
-
 	if len(s.vals) > 0 {
 		flushErr := s.flush()
 		if flushErr != nil {
@@ -103,17 +86,15 @@ func (s *sorted) Close() error {
 	// Free memory used by last read vals
 	s.vals = nil
 
-	files := make([]*bufio.Reader, s.numFiles)
-	for i := 0; i < s.numFiles; i++ {
-		file, err := os.OpenFile(filepath.Join(s.tmpDir, strconv.Itoa(i)), os.O_RDONLY, 0)
-		if err != nil {
-			return fmt.Errorf("Unable to open temp file: %v", err)
-		}
-		defer file.Close()
-		files[i] = bufio.NewReaderSize(file, s.memLimit/s.numFiles)
+	files := make([]*bufio.Reader, len(s.sizes))
+	total := 0
+	for i, size := range s.sizes {
+		file := io.NewSectionReader(s.tmpfile, int64(total), int64(size))
+		total += size
+		files[i] = bufio.NewReaderSize(file, s.memLimit/len(s.sizes))
 	}
 
-	if s.numFiles == 1 {
+	if len(s.sizes) == 1 {
 		// No need to do further sorting
 		_, copyErr := io.Copy(s.out, files[0])
 		if copyErr != nil {

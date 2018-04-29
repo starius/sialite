@@ -5,22 +5,34 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/rand"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRoundTripMultipleFiles(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "emsort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
 	w := &assertingWriter{&bytes.Buffer{}}
-	s, err := New(w, 8, less, 1000)
+	s, err := New(w, 8, less, 1000, tmpfile)
 	doTestRoundTrip(t, w, s, err)
 }
 
 func TestRoundTripSingleFile(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "emsort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
 	w := &assertingWriter{&bytes.Buffer{}}
-	s, err := New(w, 8, less, 100000000)
+	s, err := New(w, 8, less, 100000000, tmpfile)
 	doTestRoundTrip(t, w, s, err)
 }
 
