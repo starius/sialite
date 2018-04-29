@@ -64,6 +64,9 @@ func (s *sorted) Write(b []byte) (int, error) {
 }
 
 func (s *sorted) flush() error {
+	if len(s.vals) % s.chunkSize != 0 {
+		return fmt.Errorf("Writes to emsort should be aligned")
+	}
 	sort.Sort(&inmemory{s.vals, s.less, s.chunkSize})
 	if n, err := s.tmpfile.Write(s.vals); err != nil {
 		return err
@@ -94,18 +97,8 @@ func (s *sorted) Close() error {
 		files[i] = bufio.NewReaderSize(file, s.memLimit/len(s.sizes))
 	}
 
-	if len(s.sizes) == 1 {
-		// No need to do further sorting
-		_, copyErr := io.Copy(s.out, files[0])
-		if copyErr != nil {
-			return fmt.Errorf("Unable to copy sorted data to output: %v", copyErr)
-		}
-	} else if len(s.sizes) > 1 {
-		// Need to perform final sort across intermediary files
-		finalSortErr := s.finalSort(files)
-		if finalSortErr != nil {
-			return finalSortErr
-		}
+	if err := s.finalSort(files); err != nil {
+		return err
 	}
 
 	switch c := s.out.(type) {
@@ -117,6 +110,9 @@ func (s *sorted) Close() error {
 }
 
 func (s *sorted) finalSort(files []*bufio.Reader) error {
+	if len(files) == 0 {
+		return nil
+	}
 	entries := &entryHeap{
 		less:    s.less,
 		entries: make([]*entry, len(files)),
