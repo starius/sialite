@@ -130,6 +130,16 @@ func (w *Writer) Close() error {
 		}
 		w.keyStart = 0
 	}
+	if c, ok := w.data.(io.Closer); ok {
+		if err := c.Close(); err != nil {
+			return err
+		}
+	}
+	if c, ok := w.index.(io.Closer); ok {
+		if err := c.Close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
