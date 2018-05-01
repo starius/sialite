@@ -1,4 +1,4 @@
-package cachebuild
+package cache
 
 import (
 	"bytes"

@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/NebulousLabs/Sia/types"
-	"github.com/starius/sialite/cachebuild"
+	"github.com/starius/sialite/cache"
 	"github.com/starius/sialite/netlib"
 )
 
@@ -22,9 +22,9 @@ var (
 func main() {
 	flag.Parse()
 	ctx := context.Background()
-	cache, err := cachebuild.New(*files, *memLimit)
+	cache, err := cache.New(*files, *memLimit)
 	if err != nil {
-		log.Fatalf("cachebuild.New: %v", err)
+		log.Fatalf("cache.New: %v", err)
 	}
 	_, f, err := netlib.OpenOrConnect(ctx, *blockchain, *source)
 	if err != nil {
