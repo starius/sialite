@@ -149,14 +149,14 @@ type Map struct {
 	data, index []byte
 }
 
-func Open(pageLen, keyLen, valueLen int, data, index []byte, dataLen, indexLen int) (*Map, error) {
-	npages := dataLen / pageLen
-	if npages*pageLen != dataLen {
-		return nil, fmt.Errorf("dataLen is not divided by pageLen")
+func Open(pageLen, keyLen, valueLen int, data, index []byte) (*Map, error) {
+	npages := len(data) / pageLen
+	if npages*pageLen != len(data) {
+		return nil, fmt.Errorf("data length is not divided by pageLen")
 	}
-	prefixLen := indexLen / npages
-	if npages*prefixLen != indexLen {
-		return nil, fmt.Errorf("indexLen is not divided by the number of pages")
+	prefixLen := len(index) / npages
+	if npages*prefixLen != len(index) {
+		return nil, fmt.Errorf("index length is not divided by the number of pages")
 	}
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen
