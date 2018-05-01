@@ -40,7 +40,7 @@ type blockHeader struct {
 	MerkleRoot crypto.Hash
 }
 
-type Cache struct {
+type Builder struct {
 	blockchain *countingWriter
 
 	// Series of blockHeader.
@@ -63,7 +63,7 @@ type Cache struct {
 	buf []byte
 }
 
-func New(dir string, memLimit int) (*Cache, error) {
+func NewBuilder(dir string, memLimit int) (*Builder, error) {
 	if list, err := ioutil.ReadDir(dir); err != nil {
 		return nil, err
 	} else if len(list) != 0 {
@@ -124,7 +124,7 @@ func New(dir string, memLimit int) (*Cache, error) {
 		return nil, err
 	}
 
-	return &Cache{
+	return &Builder{
 		blockchain: &countingWriter{
 			impl: blockchain,
 		},
@@ -141,7 +141,7 @@ func New(dir string, memLimit int) (*Cache, error) {
 	}, nil
 }
 
-func (s *Cache) Add(block *types.Block) error {
+func (s *Builder) Add(block *types.Block) error {
 	header := blockHeader{
 		Nonce:      block.Nonce,
 		Timestamp:  block.Timestamp,
@@ -270,7 +270,7 @@ func (s *Cache) Add(block *types.Block) error {
 	return nil
 }
 
-func (s *Cache) Build() error {
+func (s *Builder) Build() error {
 	if err := s.blockchain.impl.Close(); err != nil {
 		return err
 	}

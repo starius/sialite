@@ -22,9 +22,9 @@ var (
 func main() {
 	flag.Parse()
 	ctx := context.Background()
-	cache, err := cache.New(*files, *memLimit)
+	b, err := cache.NewBuilder(*files, *memLimit)
 	if err != nil {
-		log.Fatalf("cache.New: %v", err)
+		log.Fatalf("cache.NewBuilder: %v", err)
 	}
 	_, f, err := netlib.OpenOrConnect(ctx, *blockchain, *source)
 	if err != nil {
@@ -51,7 +51,7 @@ func main() {
 			log.Printf("processBlocks got %d blocks", *nblocks)
 			break
 		}
-		if err := cache.Add(block); err != nil {
+		if err := b.Add(block); err != nil {
 			panic(err)
 		}
 	}
@@ -59,7 +59,7 @@ func main() {
 	for range bchan {
 	}
 	wg.Wait()
-	if err := cache.Build(); err != nil {
+	if err := b.Build(); err != nil {
 		panic(err)
 	}
 }
