@@ -10,7 +10,7 @@ import (
 type Writer struct {
 	pageLen, keyLen, valueLen, prefixLen int
 
-	data, index io.Writer
+	data, prefixes io.Writer
 
 	valuesStart int
 	prevKey     []byte
@@ -22,7 +22,7 @@ type Writer struct {
 	hasPrevPage bool
 }
 
-func New(pageLen, keyLen, valueLen, prefixLen int, data, index io.Writer) (*Writer, error) {
+func New(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Writer) (*Writer, error) {
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen
 	return &Writer{
@@ -31,7 +31,7 @@ func New(pageLen, keyLen, valueLen, prefixLen int, data, index io.Writer) (*Writ
 		valueLen:    valueLen,
 		prefixLen:   prefixLen,
 		data:        data,
-		index:       index,
+		prefixes:    prefixes,
 		valuesStart: valuesStart,
 		prevKey:     make([]byte, keyLen),
 		page:        make([]byte, pageLen),
@@ -96,7 +96,7 @@ func (w *Writer) Write(rec []byte) (int, error) {
 	w.valueStart = nextValueStart
 	if w.hasPrevPage || w.npages == 0 {
 		// Write prefix.
-		if n, err := w.index.Write(w.page[:w.prefixLen]); err != nil {
+		if n, err := w.prefixes.Write(w.page[:w.prefixLen]); err != nil {
 			return 0, err
 		} else if n != w.prefixLen {
 			return 0, io.ErrShortWrite
@@ -135,7 +135,7 @@ func (w *Writer) Close() error {
 			return err
 		}
 	}
-	if c, ok := w.index.(io.Closer); ok {
+	if c, ok := w.prefixes.(io.Closer); ok {
 		if err := c.Close(); err != nil {
 			return err
 		}
@@ -146,17 +146,17 @@ func (w *Writer) Close() error {
 type Map struct {
 	npages, pageLen, keyLen, valueLen, prefixLen, perPage, valuesStart int
 
-	data, index []byte
+	data, prefixes []byte
 }
 
-func Open(pageLen, keyLen, valueLen int, data, index []byte) (*Map, error) {
+func Open(pageLen, keyLen, valueLen int, data, prefixes []byte) (*Map, error) {
 	npages := len(data) / pageLen
 	if npages*pageLen != len(data) {
 		return nil, fmt.Errorf("data length is not divided by pageLen")
 	}
-	prefixLen := len(index) / npages
-	if npages*prefixLen != len(index) {
-		return nil, fmt.Errorf("index length is not divided by the number of pages")
+	prefixLen := len(prefixes) / npages
+	if npages*prefixLen != len(prefixes) {
+		return nil, fmt.Errorf("prefixes length is not divided by the number of pages")
 	}
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen
@@ -169,7 +169,7 @@ func Open(pageLen, keyLen, valueLen int, data, index []byte) (*Map, error) {
 		perPage:     perPage,
 		valuesStart: valuesStart,
 		data:        data,
-		index:       index,
+		prefixes:    prefixes,
 	}, nil
 }
 
@@ -181,7 +181,7 @@ func (m *Map) Lookup(key []byte) ([]byte, error) {
 	prefix := key[:m.prefixLen]
 	ipage := sort.Search(m.npages, func(i int) bool {
 		start := i * m.prefixLen
-		candidate := m.index[start : start+m.prefixLen]
+		candidate := m.prefixes[start : start+m.prefixLen]
 		return bytes.Compare(candidate, prefix) > 0
 	}) - 1
 	if ipage == -1 {
