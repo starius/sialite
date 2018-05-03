@@ -155,6 +155,15 @@ func (s *Builder) Add(block *types.Block) error {
 	addressLoc := s.buf[:addressRecordSize]
 	address := addressLoc[:32]
 	locOfAddress := addressLoc[32:addressRecordSize]
+	writeAddress := func(uh types.UnlockHash) error {
+		copy(address, uh[:])
+		if n, err := s.addresses.Write(addressLoc); err != nil {
+			return err
+		} else if n != addressRecordSize {
+			return io.ErrShortWrite
+		}
+		return nil
+	}
 	firstMinerPayout := s.offsetIndex
 	// See Block.MarshalSia.
 	for _, mp := range block.MinerPayouts {
@@ -164,12 +173,9 @@ func (s *Builder) Add(block *types.Block) error {
 		} else if n != 8 {
 			return io.ErrShortWrite
 		}
-		copy(address, mp.UnlockHash[:])
 		binary.LittleEndian.PutUint32(locOfAddress, s.offsetIndex)
-		if n, err := s.addresses.Write(addressLoc); err != nil {
+		if err := writeAddress(mp.UnlockHash); err != nil {
 			return err
-		} else if n != addressRecordSize {
-			return io.ErrShortWrite
 		}
 		s.offsetIndex++
 		if err := mp.MarshalSia(s.blockchain); err != nil {
@@ -186,72 +192,46 @@ func (s *Builder) Add(block *types.Block) error {
 		}
 		binary.LittleEndian.PutUint32(locOfAddress, s.offsetIndex)
 		for _, si := range tx.SiacoinInputs {
-			uh := si.UnlockConditions.UnlockHash()
-			copy(address, uh[:])
-			if n, err := s.addresses.Write(addressLoc); err != nil {
+			if err := writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
 				return err
-			} else if n != addressRecordSize {
-				return io.ErrShortWrite
 			}
 		}
 		for _, si := range tx.SiafundInputs {
-			uh := si.UnlockConditions.UnlockHash()
-			copy(address, uh[:])
-			if n, err := s.addresses.Write(addressLoc); err != nil {
+			if err := writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
 				return err
-			} else if n != addressRecordSize {
-				return io.ErrShortWrite
 			}
 		}
 		for _, so := range tx.SiacoinOutputs {
-			copy(address, so.UnlockHash[:])
-			if n, err := s.addresses.Write(addressLoc); err != nil {
+			if err := writeAddress(so.UnlockHash); err != nil {
 				return err
-			} else if n != addressRecordSize {
-				return io.ErrShortWrite
 			}
 		}
 		for _, so := range tx.SiafundOutputs {
-			copy(address, so.UnlockHash[:])
-			if n, err := s.addresses.Write(addressLoc); err != nil {
+			if err := writeAddress(so.UnlockHash); err != nil {
 				return err
-			} else if n != addressRecordSize {
-				return io.ErrShortWrite
 			}
 		}
 		for _, contract := range tx.FileContracts {
 			for _, so := range contract.ValidProofOutputs {
-				copy(address, so.UnlockHash[:])
-				if n, err := s.addresses.Write(addressLoc); err != nil {
+				if err := writeAddress(so.UnlockHash); err != nil {
 					return err
-				} else if n != addressRecordSize {
-					return io.ErrShortWrite
 				}
 			}
 			for _, so := range contract.MissedProofOutputs {
-				copy(address, so.UnlockHash[:])
-				if n, err := s.addresses.Write(addressLoc); err != nil {
+				if err := writeAddress(so.UnlockHash); err != nil {
 					return err
-				} else if n != addressRecordSize {
-					return io.ErrShortWrite
 				}
 			}
 		}
 		for _, rev := range tx.FileContractRevisions {
 			for _, so := range rev.NewValidProofOutputs {
-				copy(address, so.UnlockHash[:])
-				if n, err := s.addresses.Write(addressLoc); err != nil {
+				if err := writeAddress(so.UnlockHash); err != nil {
 					return err
-				} else if n != addressRecordSize {
-					return io.ErrShortWrite
 				}
 			}
 			for _, so := range rev.NewMissedProofOutputs {
-				copy(address, so.UnlockHash[:])
-				if n, err := s.addresses.Write(addressLoc); err != nil {
+				if err := writeAddress(so.UnlockHash); err != nil {
 					return err
-				} else if n != addressRecordSize {
-					return io.ErrShortWrite
 				}
 			}
 		}
