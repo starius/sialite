@@ -58,5 +58,5 @@ func main() {
 	}
 	s = s1
 	http.HandleFunc("/v1/history", handler)
-	http.ListenAndServe(*addr, nil)
+	log.Fatal(http.ListenAndServe(*addr, nil))
 }
