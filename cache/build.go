@@ -111,7 +111,7 @@ func NewBuilder(dir string, memLimit int) (*Builder, error) {
 		return nil, err
 	}
 
-	addressesUniq, err := fastmap.NewUniq(addressesFastmap, addressesIndices, addressPrefixLen, 4)
+	addressesUniq, err := fastmap.NewUniq(addressesFastmap, addressesIndices, addressPrefixLen, 4, 4)
 	if err != nil {
 		return nil, err
 	}

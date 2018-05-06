@@ -11,30 +11,35 @@ type Uniq struct {
 	fm               *Writer
 	indices          io.Writer
 	keyLen, valueLen int
+	offsetLen        int
 	fmRecord         []byte
 	prevKey          []byte
 	offsetBytes      []byte
+	fullOffsetBytes  []byte
 	values           []byte
 	lenBuf           []byte
-	offset           uint32
+	offset           uint64
 
 	// TODO should write varints to indices
 }
 
-func NewUniq(fm *Writer, indices io.Writer, keyLen, valueLen int) (*Uniq, error) {
+func NewUniq(fm *Writer, indices io.Writer, keyLen, valueLen, offsetLen int) (*Uniq, error) {
 	fmRecord := make([]byte, keyLen+valueLen)
 	prevKey := fmRecord[:keyLen]
 	offsetBytes := fmRecord[keyLen:]
 	lenBuf := make([]byte, binary.MaxVarintLen64)
+	fullOffsetBytes := make([]byte, 8)
 	return &Uniq{
-		fm:          fm,
-		indices:     indices,
-		keyLen:      keyLen,
-		valueLen:    valueLen,
-		fmRecord:    fmRecord,
-		prevKey:     prevKey,
-		offsetBytes: offsetBytes,
-		lenBuf:      lenBuf,
+		fm:              fm,
+		indices:         indices,
+		keyLen:          keyLen,
+		valueLen:        valueLen,
+		offsetLen:       offsetLen,
+		fmRecord:        fmRecord,
+		prevKey:         prevKey,
+		offsetBytes:     offsetBytes,
+		fullOffsetBytes: fullOffsetBytes,
+		lenBuf:          lenBuf,
 	}, nil
 }
 
@@ -53,8 +58,9 @@ func (u *Uniq) dump() error {
 	} else if n != len(u.values) {
 		return io.ErrShortWrite
 	}
-	u.offset += uint32(l + len(u.values))
-	binary.LittleEndian.PutUint32(u.offsetBytes, u.offset)
+	u.offset += uint64(l + len(u.values))
+	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
+	copy(u.offsetBytes, u.fullOffsetBytes)
 	u.values = u.values[:0]
 	return nil
 }
@@ -107,8 +113,8 @@ type UniqMap struct {
 	valueLen int
 }
 
-func OpenUniq(pageLen, keyLen, valueLen int, data, prefixes, values []byte) (*UniqMap, error) {
-	fm, err := Open(pageLen, keyLen, 4, data, prefixes)
+func OpenUniq(pageLen, keyLen, valueLen, offsetLen int, data, prefixes, values []byte) (*UniqMap, error) {
+	fm, err := Open(pageLen, keyLen, offsetLen, data, prefixes)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +130,10 @@ func (u *UniqMap) Lookup(key []byte) ([]byte, error) {
 	if err != nil || offsetBytes == nil {
 		return nil, err
 	}
-	lenPos := int(binary.LittleEndian.Uint32(offsetBytes))
+	var fullOffset [8]byte
+	fullOffsetBytes := fullOffset[:]
+	copy(fullOffsetBytes, offsetBytes)
+	lenPos := int(binary.LittleEndian.Uint64(fullOffsetBytes))
 	size0, l := binary.Uvarint(u.values[lenPos:])
 	if l <= 0 {
 		return nil, fmt.Errorf("Error in database: bad varint at lenPos")

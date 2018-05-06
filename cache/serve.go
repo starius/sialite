@@ -56,7 +56,7 @@ func NewServer(dir string) (*Server, error) {
 			v.Field(i).SetBytes(buf)
 		}
 	}
-	addressMap, err := fastmap.OpenUniq(4096, addressPrefixLen, 4, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
+	addressMap, err := fastmap.OpenUniq(4096, addressPrefixLen, 4, 4, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
 	if err != nil {
 		return nil, err
 	}
