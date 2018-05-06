@@ -108,7 +108,7 @@ type UniqMap struct {
 }
 
 func OpenUniq(pageLen, keyLen, valueLen int, data, prefixes, values []byte) (*UniqMap, error) {
-	fm, err := Open(pageLen, keyLen, valueLen, data, prefixes)
+	fm, err := Open(pageLen, keyLen, 4, data, prefixes)
 	if err != nil {
 		return nil, err
 	}
