@@ -31,7 +31,8 @@ func bytesLess(a []byte, b []byte) bool {
 	return bytes.Compare(a, b) == -1
 }
 
-const addressRecordSize = 32 + 4
+const addressPrefixLen = 16
+const addressRecordSize = addressPrefixLen + 4
 const bufferSize = addressRecordSize
 
 type blockHeader struct {
@@ -56,7 +57,7 @@ type Builder struct {
 	// Indices are 4 byte long
 	blockLocations *os.File
 
-	// unlockhash(32 bytes) + 4 byte index in offsets
+	// unlockhash(addressPrefixLen bytes) + 4 byte index in offsets
 	addresses    emsort.SortedWriter
 	addressestmp *os.File
 
@@ -100,7 +101,7 @@ func NewBuilder(dir string, memLimit int) (*Builder, error) {
 		return nil, err
 	}
 
-	addressesFastmap, err := fastmap.New(4096, 32, 4, 5, addressesFastmapData, addressesFastmapPrefixes)
+	addressesFastmap, err := fastmap.New(4096, addressPrefixLen, 4, 5, addressesFastmapData, addressesFastmapPrefixes)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +111,7 @@ func NewBuilder(dir string, memLimit int) (*Builder, error) {
 		return nil, err
 	}
 
-	addressesUniq, err := fastmap.NewUniq(addressesFastmap, addressesIndices, 32, 4)
+	addressesUniq, err := fastmap.NewUniq(addressesFastmap, addressesIndices, addressPrefixLen, 4)
 	if err != nil {
 		return nil, err
 	}
@@ -153,10 +154,10 @@ func (s *Builder) Add(block *types.Block) error {
 	offset := s.buf[:8]
 	blockLoc := s.buf[:8]
 	addressLoc := s.buf[:addressRecordSize]
-	address := addressLoc[:32]
-	locOfAddress := addressLoc[32:addressRecordSize]
+	addressPrefix := addressLoc[:addressPrefixLen]
+	locOfAddress := addressLoc[addressPrefixLen:addressRecordSize]
 	writeAddress := func(uh types.UnlockHash) error {
-		copy(address, uh[:])
+		copy(addressPrefix, uh[:])
 		if n, err := s.addresses.Write(addressLoc); err != nil {
 			return err
 		} else if n != addressRecordSize {

@@ -56,7 +56,7 @@ func NewServer(dir string) (*Server, error) {
 			v.Field(i).SetBytes(buf)
 		}
 	}
-	addressMap, err := fastmap.OpenUniq(4096, 32, 4, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
+	addressMap, err := fastmap.OpenUniq(4096, addressPrefixLen, 4, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,8 @@ type Item struct {
 }
 
 func (s *Server) GetHistory(address []byte, start string) (history []Item, next string, err error) {
-	values, err := s.addressMap.Lookup(address)
+	addressPrefix := address[:addressPrefixLen]
+	values, err := s.addressMap.Lookup(addressPrefix)
 	if err != nil || values == nil {
 		return nil, "", err
 	}
