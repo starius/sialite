@@ -12,7 +12,6 @@ import (
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/julienschmidt/httprouter"
 	"github.com/starius/sialite/netlib"
-	"github.com/starius/sialite/store"
 	"github.com/xtaci/smux"
 )
 
@@ -250,14 +249,11 @@ func (db *Database) addSfi(i *SiafundInput) {
 	})
 }
 
-func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
+func (db *Database) addBlock(block *types.Block) error {
 	height := len(db.height2block)
 	db.height2block = append(db.height2block, block)
 	id := block.ID()
 	log.Printf("processing block %d %s.", height, id)
-	if storage != nil {
-		return storage.Add(block)
-	}
 	db.block2height[block] = height
 	db.block2id[block] = id
 	db.id2block[id] = block
@@ -372,7 +368,7 @@ func (db *Database) addBlock(block *types.Block, storage *store.Storage) error {
 	return nil
 }
 
-func processBlocks(ctx context.Context, bchan chan *types.Block, storage *store.Storage) (*Database, error) {
+func processBlocks(ctx context.Context, bchan chan *types.Block) (*Database, error) {
 	log.Printf("processBlocks")
 	db := NewDatabase()
 	i := 0
@@ -382,14 +378,14 @@ func processBlocks(ctx context.Context, bchan chan *types.Block, storage *store.
 			log.Printf("processBlocks got %d blocks", *nblocks)
 			break
 		}
-		if err := db.addBlock(block, storage); err != nil {
+		if err := db.addBlock(block); err != nil {
 			return nil, err
 		}
 	}
 	return db, nil
 }
 
-func (db *Database) fetchBlocks(ctx context.Context, sess *smux.Session, storage *store.Storage) error {
+func (db *Database) fetchBlocks(ctx context.Context, sess *smux.Session) error {
 	stream, err := sess.OpenStream()
 	if err != nil {
 		return err
@@ -405,7 +401,7 @@ func (db *Database) fetchBlocks(ctx context.Context, sess *smux.Session, storage
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	for block := range bchan {
-		if err := db.addBlock(block, storage); err != nil {
+		if err := db.addBlock(block); err != nil {
 			return err
 		}
 	}
@@ -415,14 +411,6 @@ func (db *Database) fetchBlocks(ctx context.Context, sess *smux.Session, storage
 func main() {
 	flag.Parse()
 	ctx := context.Background()
-	var storage *store.Storage
-	var err error
-	if *files != "" {
-		storage, err = store.New(*files)
-		if err != nil {
-			log.Fatalf("store.New: %v", err)
-		}
-	}
 	sess, f, err := netlib.OpenOrConnect(ctx, *blockchain, *source)
 	if err != nil {
 		panic(err)
@@ -444,7 +432,7 @@ func main() {
 	}()
 	go func() {
 		defer wg.Done()
-		if db, err = processBlocks(ctx, bchan, storage); err != nil {
+		if db, err = processBlocks(ctx, bchan); err != nil {
 			panic(err)
 		}
 		cancel()
@@ -454,10 +442,6 @@ func main() {
 	wg.Wait()
 
 	fmt.Println("Initial block download completed.")
-
-	if storage != nil {
-		return
-	}
 
 	fmt.Printf("len(tx2block) = %d\n", len(db.tx2block))
 	fmt.Printf("len(id2sco) = %d\n", len(db.id2sco))
@@ -472,7 +456,7 @@ func main() {
 		go func() {
 			for range time.NewTicker(5 * time.Second).C {
 				ctx := context.Background()
-				db.fetchBlocks(ctx, sess, storage)
+				db.fetchBlocks(ctx, sess)
 			}
 		}()
 	}
