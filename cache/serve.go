@@ -26,7 +26,7 @@ type Server struct {
 	AddressesFastmapData     []byte
 	AddressesFastmapPrefixes []byte
 	AddressesIndices         []byte
-	addressFastmap           *fastmap.Map
+	addressMap               *fastmap.UniqMap
 
 	nblocks, nitems int
 }
@@ -56,11 +56,11 @@ func NewServer(dir string) (*Server, error) {
 			v.Field(i).SetBytes(buf)
 		}
 	}
-	addressFastmap, err := fastmap.Open(4096, 32, 4, s.AddressesFastmapData, s.AddressesFastmapPrefixes)
+	addressMap, err := fastmap.OpenUniq(4096, 32, 4, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
 	if err != nil {
 		return nil, err
 	}
-	s.addressFastmap = addressFastmap
+	s.addressMap = addressMap
 	s.nblocks = len(s.BlockLocations) / 8
 	if s.nblocks*8 != len(s.BlockLocations) {
 		return nil, fmt.Errorf("Bad length of blockLocations")
@@ -102,27 +102,19 @@ type Item struct {
 }
 
 func (s *Server) GetHistory(address []byte, start string) (history []Item, next string, err error) {
-	indexBytes, err := s.addressFastmap.Lookup(address)
-	if err != nil || indexBytes == nil {
+	values, err := s.addressMap.Lookup(address)
+	if err != nil || values == nil {
 		return nil, "", err
 	}
-	lenPos := int(binary.LittleEndian.Uint32(indexBytes))
-	size0, l := binary.Uvarint(s.AddressesIndices[lenPos:])
-	if l <= 0 {
-		return nil, "", fmt.Errorf("Error in database: bad varint at lenPos")
-	}
-	indexPos := lenPos + l
-	if indexPos+int(size0)*4 > len(s.AddressesIndices) {
-		return nil, "", fmt.Errorf("Error in database: too large size")
-	}
-	size := int(size0)
+	size := len(values) / 4
 	if size > MAX_HISTORY_SIZE {
 		size = MAX_HISTORY_SIZE
 		// TODO implement "next" logic.
 	}
+	indexPos := 0
 	for i := 0; i < size; i++ {
 		indexEnd := indexPos + 4
-		itemIndex := int(binary.LittleEndian.Uint32(s.AddressesIndices[indexPos:indexEnd]))
+		itemIndex := int(binary.LittleEndian.Uint32(values[indexPos:indexEnd]))
 		indexPos = indexEnd
 		item, err := s.getItem(itemIndex)
 		if err != nil {

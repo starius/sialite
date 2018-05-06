@@ -99,3 +99,40 @@ func (u *Uniq) Close() error {
 	}
 	return nil
 }
+
+type UniqMap struct {
+	fm *Map
+
+	values   []byte
+	valueLen int
+}
+
+func OpenUniq(pageLen, keyLen, valueLen int, data, prefixes, values []byte) (*UniqMap, error) {
+	fm, err := Open(pageLen, keyLen, valueLen, data, prefixes)
+	if err != nil {
+		return nil, err
+	}
+	return &UniqMap{
+		fm:       fm,
+		values:   values,
+		valueLen: valueLen,
+	}, nil
+}
+
+func (u *UniqMap) Lookup(key []byte) ([]byte, error) {
+	offsetBytes, err := u.fm.Lookup(key)
+	if err != nil || offsetBytes == nil {
+		return nil, err
+	}
+	lenPos := int(binary.LittleEndian.Uint32(offsetBytes))
+	size0, l := binary.Uvarint(u.values[lenPos:])
+	if l <= 0 {
+		return nil, fmt.Errorf("Error in database: bad varint at lenPos")
+	}
+	dataStart := lenPos + l
+	dataEnd := dataStart + int(size0)*u.valueLen
+	if dataEnd > len(u.values) {
+		return nil, fmt.Errorf("Error in database: too large size")
+	}
+	return u.values[dataStart:dataEnd], nil
+}
