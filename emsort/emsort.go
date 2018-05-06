@@ -64,7 +64,7 @@ func (s *sorted) Write(b []byte) (int, error) {
 }
 
 func (s *sorted) flush() error {
-	if len(s.vals) % s.chunkSize != 0 {
+	if len(s.vals)%s.chunkSize != 0 {
 		return fmt.Errorf("Writes to emsort should be aligned")
 	}
 	sort.Sort(&inmemory{s.vals, s.less, s.chunkSize})
