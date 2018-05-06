@@ -106,19 +106,19 @@ func (s *Server) GetHistory(address []byte, start string) (history []Item, next 
 	if err != nil || indexBytes == nil {
 		return nil, "", err
 	}
-	sizePos := int(binary.LittleEndian.Uint32(indexBytes))
-	indexPos := sizePos + 4
-	if indexPos > len(s.AddressesIndices) {
-		return nil, "", fmt.Errorf("Error in database: too large sizePos")
+	lenPos := int(binary.LittleEndian.Uint32(indexBytes))
+	size0, l := binary.Uvarint(s.AddressesIndices[lenPos:])
+	if l <= 0 {
+		return nil, "", fmt.Errorf("Error in database: bad varint at lenPos")
 	}
-	size0 := int(binary.LittleEndian.Uint32(s.AddressesIndices[sizePos:indexPos]))
-	if indexPos+size0*4 > len(s.AddressesIndices) {
+	indexPos := lenPos + l
+	if indexPos+int(size0)*4 > len(s.AddressesIndices) {
 		return nil, "", fmt.Errorf("Error in database: too large size")
 	}
-	size := size0
+	size := int(size0)
 	if size > MAX_HISTORY_SIZE {
 		size = MAX_HISTORY_SIZE
-		// TODO inplement "next" logic.
+		// TODO implement "next" logic.
 	}
 	for i := 0; i < size; i++ {
 		indexEnd := indexPos + 4

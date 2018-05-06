@@ -25,7 +25,7 @@ func NewUniq(fm *Writer, indices io.Writer, keyLen, valueLen int) (*Uniq, error)
 	fmRecord := make([]byte, keyLen+valueLen)
 	prevKey := fmRecord[:keyLen]
 	offsetBytes := fmRecord[keyLen:]
-	lenBuf := make([]byte, 4)
+	lenBuf := make([]byte, binary.MaxVarintLen64)
 	return &Uniq{
 		fm:          fm,
 		indices:     indices,
@@ -42,10 +42,10 @@ func (u *Uniq) dump() error {
 	if _, err := u.fm.Write(u.fmRecord); err != nil {
 		return err
 	}
-	binary.LittleEndian.PutUint32(u.lenBuf, uint32(len(u.values)/4))
-	if n, err := u.indices.Write(u.lenBuf); err != nil {
+	l := binary.PutUvarint(u.lenBuf, uint64(len(u.values)/4))
+	if n, err := u.indices.Write(u.lenBuf[:l]); err != nil {
 		return err
-	} else if n != len(u.lenBuf) {
+	} else if n != l {
 		return io.ErrShortWrite
 	}
 	if n, err := u.indices.Write(u.values); err != nil {
@@ -53,7 +53,7 @@ func (u *Uniq) dump() error {
 	} else if n != len(u.values) {
 		return io.ErrShortWrite
 	}
-	u.offset += uint32(len(u.lenBuf) + len(u.values))
+	u.offset += uint32(l + len(u.values))
 	binary.LittleEndian.PutUint32(u.offsetBytes, u.offset)
 	u.values = u.values[:0]
 	return nil
