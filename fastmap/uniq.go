@@ -19,6 +19,7 @@ type Uniq struct {
 	values           []byte
 	lenBuf           []byte
 	offset           uint64
+	offsetEnd        uint64
 
 	// TODO should write varints to indices
 }
@@ -33,6 +34,7 @@ func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes
 	offsetBytes := fmRecord[keyLen:]
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	fullOffsetBytes := make([]byte, 8)
+	offsetEnd := uint64(1 << uint(8*offsetLen))
 	return &Uniq{
 		fm:              fm,
 		indices:         indices,
@@ -44,6 +46,7 @@ func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes
 		offsetBytes:     offsetBytes,
 		fullOffsetBytes: fullOffsetBytes,
 		lenBuf:          lenBuf,
+		offsetEnd:       offsetEnd,
 	}, nil
 }
 
@@ -63,6 +66,9 @@ func (u *Uniq) dump() error {
 		return io.ErrShortWrite
 	}
 	u.offset += uint64(l + len(u.values))
+	if u.offset > u.offsetEnd {
+		return fmt.Errorf("too large offset; increade offsetLen")
+	}
 	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
 	copy(u.offsetBytes, u.fullOffsetBytes)
 	u.values = u.values[:0]
