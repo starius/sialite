@@ -101,17 +101,12 @@ func NewBuilder(dir string, memLimit int) (*Builder, error) {
 		return nil, err
 	}
 
-	addressesFastmap, err := fastmap.New(4096, addressPrefixLen, 4, 5, addressesFastmapData, addressesFastmapPrefixes)
-	if err != nil {
-		return nil, err
-	}
-
 	addressesIndices, err := os.Create(path.Join(dir, "addressesIndices"))
 	if err != nil {
 		return nil, err
 	}
 
-	addressesUniq, err := fastmap.NewUniq(addressesFastmap, addressesIndices, addressPrefixLen, 4, 4)
+	addressesUniq, err := fastmap.NewUniq(4096, addressPrefixLen, 4, 5, 4, addressesFastmapData, addressesFastmapPrefixes, addressesIndices)
 	if err != nil {
 		return nil, err
 	}

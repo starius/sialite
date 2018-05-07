@@ -23,7 +23,11 @@ type Uniq struct {
 	// TODO should write varints to indices
 }
 
-func NewUniq(fm *Writer, indices io.Writer, keyLen, valueLen, offsetLen int) (*Uniq, error) {
+func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes, indices io.Writer) (*Uniq, error) {
+	fm, err := New(pageLen, keyLen, valueLen, prefixLen, data, prefixes)
+	if err != nil {
+		return nil, err
+	}
 	fmRecord := make([]byte, keyLen+valueLen)
 	prevKey := fmRecord[:keyLen]
 	offsetBytes := fmRecord[keyLen:]
