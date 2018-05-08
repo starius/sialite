@@ -67,7 +67,7 @@ func (u *Uniq) dump() error {
 	}
 	u.offset += uint64(l + len(u.values))
 	if u.offset > u.offsetEnd {
-		return fmt.Errorf("too large offset; increade offsetLen")
+		return fmt.Errorf("too large offset; increase offsetLen")
 	}
 	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
 	copy(u.offsetBytes, u.fullOffsetBytes)
