@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -28,11 +29,29 @@ type Server struct {
 	AddressesIndices         []byte
 	addressMap               *fastmap.UniqMap
 
+	offsetLen        int
+	offsetIndexLen   int
+	addressPrefixLen int
+
 	nblocks, nitems int
 }
 
 func NewServer(dir string) (*Server, error) {
-	s := &Server{}
+	// Read parameters.json.
+	jf, err := os.Open(path.Join(dir, "parameters.json"))
+	if err != nil {
+		return nil, err
+	}
+	defer jf.Close()
+	var par parameters
+	if err := json.NewDecoder(jf).Decode(&par); err != nil {
+		return nil, err
+	}
+	s := &Server{
+		offsetLen:        par.OffsetLen,
+		offsetIndexLen:   par.OffsetIndexLen,
+		addressPrefixLen: par.AddressPrefixLen,
+	}
 	v := reflect.ValueOf(s).Elem()
 	st := v.Type()
 	// Mmap all []byte fileds from files.
@@ -56,17 +75,17 @@ func NewServer(dir string) (*Server, error) {
 			v.Field(i).SetBytes(buf)
 		}
 	}
-	addressMap, err := fastmap.OpenUniq(4096, addressPrefixLen, 4, 4, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
+	addressMap, err := fastmap.OpenUniq(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
 	if err != nil {
 		return nil, err
 	}
 	s.addressMap = addressMap
-	s.nblocks = len(s.BlockLocations) / 8
-	if s.nblocks*8 != len(s.BlockLocations) {
+	s.nblocks = len(s.BlockLocations) / (2 * par.OffsetIndexLen)
+	if s.nblocks*(2*par.OffsetIndexLen) != len(s.BlockLocations) {
 		return nil, fmt.Errorf("Bad length of blockLocations")
 	}
-	s.nitems = len(s.Offsets) / 8
-	if s.nitems*8 != len(s.Offsets) {
+	s.nitems = len(s.Offsets) / par.OffsetLen
+	if s.nitems*par.OffsetLen != len(s.Offsets) {
 		return nil, fmt.Errorf("Bad length of offsets")
 	}
 	runtime.SetFinalizer(s, (*Server).Close)
@@ -102,20 +121,23 @@ type Item struct {
 }
 
 func (s *Server) GetHistory(address []byte, start string) (history []Item, next string, err error) {
-	addressPrefix := address[:addressPrefixLen]
+	addressPrefix := address[:s.addressPrefixLen]
 	values, err := s.addressMap.Lookup(addressPrefix)
 	if err != nil || values == nil {
 		return nil, "", err
 	}
-	size := len(values) / 4
+	size := len(values) / s.offsetIndexLen
 	if size > MAX_HISTORY_SIZE {
 		size = MAX_HISTORY_SIZE
 		// TODO implement "next" logic.
 	}
 	indexPos := 0
+	var tmp [8]byte
+	tmpBytes := tmp[:]
 	for i := 0; i < size; i++ {
-		indexEnd := indexPos + 4
-		itemIndex := int(binary.LittleEndian.Uint32(values[indexPos:indexEnd]))
+		indexEnd := indexPos + s.offsetIndexLen
+		copy(tmpBytes, values[indexPos:indexEnd])
+		itemIndex := int(binary.LittleEndian.Uint64(tmpBytes))
 		indexPos = indexEnd
 		item, err := s.getItem(itemIndex)
 		if err != nil {
@@ -127,14 +149,18 @@ func (s *Server) GetHistory(address []byte, start string) (history []Item, next 
 }
 
 func (s *Server) getItem(itemIndex int) (Item, error) {
+	var tmp [8]byte
+	tmpBytes := tmp[:]
 	if itemIndex >= s.nitems {
 		return Item{}, fmt.Errorf("Error in database: too large item index")
 	}
-	start := itemIndex * 8
-	dataStart := int(binary.LittleEndian.Uint64(s.Offsets[start : start+8]))
+	start := itemIndex * s.offsetLen
+	copy(tmpBytes, s.Offsets[start:start+s.offsetLen])
+	dataStart := int(binary.LittleEndian.Uint64(tmpBytes))
 	dataEnd := len(s.Blockchain)
 	if itemIndex != s.nitems-1 {
-		dataEnd = int(binary.LittleEndian.Uint64(s.Offsets[start+8 : start+16]))
+		copy(tmpBytes, s.Offsets[start+s.offsetLen:start+2*s.offsetLen])
+		dataEnd = int(binary.LittleEndian.Uint64(tmpBytes))
 	}
 	data := s.Blockchain[dataStart:dataEnd]
 	// Find the block.
@@ -161,8 +187,12 @@ func (s *Server) getItem(itemIndex int) (Item, error) {
 }
 
 func (s *Server) getBlockLocation(index int) (int, int) {
-	p := index * 8
-	payoutsStart := int(binary.LittleEndian.Uint32(s.BlockLocations[p : p+4]))
-	txsStart := int(binary.LittleEndian.Uint32(s.AddressesIndices[p+4 : p+8]))
+	var tmp [8]byte
+	tmpBytes := tmp[:]
+	p := index * (2 * s.offsetIndexLen)
+	copy(tmpBytes, s.BlockLocations[p:p+s.offsetIndexLen])
+	payoutsStart := int(binary.LittleEndian.Uint64(tmpBytes))
+	copy(tmpBytes, s.BlockLocations[p+s.offsetIndexLen:p+2*s.offsetIndexLen])
+	txsStart := int(binary.LittleEndian.Uint64(tmpBytes))
 	return payoutsStart, txsStart
 }

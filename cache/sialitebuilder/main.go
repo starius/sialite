@@ -17,12 +17,19 @@ var (
 	files      = flag.String("files", "", "Dir to write files")
 	memLimit   = flag.Int("memlimit", 64*1024*1024, "Memory limit, bytes")
 	nblocks    = flag.Int("nblocks", 0, "Approximate max number of blocks (0 = all)")
+
+	offsetLen               = flag.Int("offset_len", 8, "sizeof(offset in blockchain file)")
+	offsetIndexLen          = flag.Int("offset_index_len", 4, "sizeof(index in offsets file)")
+	addressPageLen          = flag.Int("address_page_len", 4096, "sizeof(page in addressesFastmapData)")
+	addressPrefixLen        = flag.Int("address_prefix_len", 16, "sizeof(prefix of address to store)")
+	addressFastmapPrefixLen = flag.Int("address_fastmap_prefix_len", 5, "sizeof(prefix of address to store in addressesFastmapPrefixes)")
+	addressOffsetLen        = flag.Int("address_offset_len", 4, "sizeof(offset in addressesIndices file)")
 )
 
 func main() {
 	flag.Parse()
 	ctx := context.Background()
-	b, err := cache.NewBuilder(*files, *memLimit)
+	b, err := cache.NewBuilder(*files, *memLimit, *offsetLen, *offsetIndexLen, *addressPageLen, *addressPrefixLen, *addressFastmapPrefixLen, *addressOffsetLen)
 	if err != nil {
 		log.Fatalf("cache.NewBuilder: %v", err)
 	}

@@ -3,6 +3,7 @@ package cache
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -31,9 +32,14 @@ func bytesLess(a []byte, b []byte) bool {
 	return bytes.Compare(a, b) == -1
 }
 
-const addressPrefixLen = 16
-const addressRecordSize = addressPrefixLen + 4
-const bufferSize = addressRecordSize
+type parameters struct {
+	OffsetLen               int
+	OffsetIndexLen          int
+	AddressPageLen          int
+	AddressPrefixLen        int
+	AddressFastmapPrefixLen int
+	AddressOffsetLen        int
+}
 
 type blockHeader struct {
 	Nonce      types.BlockNonce
@@ -48,27 +54,58 @@ type Builder struct {
 	headersFile    *os.File
 	headersEncoder *encoding.Encoder
 
-	offsetIndex uint32
+	offsetIndex uint64
 
 	// 8-byte offsets of miner payouts, and txs in blockchain
 	offsets *os.File
 
 	// list of pairs (index of first miner payout, index of first tx) in offsets
-	// Indices are 4 byte long
+	// Indices are offsetLen byte long
 	blockLocations *os.File
 
-	// unlockhash(addressPrefixLen bytes) + 4 byte index in offsets
+	// unlockhash(addressPrefixLen bytes) + addressOffsetLen byte index in offsets
 	addresses    emsort.SortedWriter
 	addressestmp *os.File
 
-	buf []byte
+	buf, tmpBuf []byte
+
+	offsetEnd uint64
+
+	offsetLen, offsetIndexLen           int
+	addressRecordSize, addressPrefixLen int
 }
 
-func NewBuilder(dir string, memLimit int) (*Builder, error) {
+func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen, addressPrefixLen, addressFastmapPrefixLen, addressOffsetLen int) (*Builder, error) {
+
+	addressRecordSize := addressPrefixLen + addressOffsetLen
+	bufferSize := addressRecordSize // Max of used buffers.
+
 	if list, err := ioutil.ReadDir(dir); err != nil {
 		return nil, err
 	} else if len(list) != 0 {
 		return nil, fmt.Errorf("Output directory is not empty")
+	}
+
+	p := parameters{
+		OffsetLen:               offsetLen,
+		OffsetIndexLen:          offsetIndexLen,
+		AddressPageLen:          addressPageLen,
+		AddressPrefixLen:        addressPrefixLen,
+		AddressFastmapPrefixLen: addressFastmapPrefixLen,
+		AddressOffsetLen:        addressOffsetLen,
+	}
+
+	parametersJson, err := os.Create(path.Join(dir, "parameters.json"))
+	if err != nil {
+		return nil, err
+	}
+	e := json.NewEncoder(parametersJson)
+	e.SetIndent("", "\t")
+	if err := e.Encode(p); err != nil {
+		return nil, err
+	}
+	if err := parametersJson.Close(); err != nil {
+		return nil, err
 	}
 
 	blockchain, err := os.Create(path.Join(dir, "blockchain"))
@@ -106,7 +143,7 @@ func NewBuilder(dir string, memLimit int) (*Builder, error) {
 		return nil, err
 	}
 
-	addressesUniq, err := fastmap.NewUniq(4096, addressPrefixLen, 4, 5, 4, addressesFastmapData, addressesFastmapPrefixes, addressesIndices)
+	addressesUniq, err := fastmap.NewUniq(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +155,10 @@ func NewBuilder(dir string, memLimit int) (*Builder, error) {
 	addresses, err := emsort.New(addressesUniq, addressRecordSize, bytesLess, memLimit, addressestmp)
 	if err != nil {
 		return nil, err
+	}
+
+	if offsetLen > 8 {
+		return nil, fmt.Errorf("too large offsetLen")
 	}
 
 	return &Builder{
@@ -133,7 +174,15 @@ func NewBuilder(dir string, memLimit int) (*Builder, error) {
 
 		addressestmp: addressestmp,
 
-		buf: make([]byte, bufferSize),
+		buf:    make([]byte, bufferSize),
+		tmpBuf: make([]byte, 8),
+
+		offsetEnd: uint64((1 << uint(8*offsetLen)) - 1),
+
+		offsetLen:         offsetLen,
+		offsetIndexLen:    offsetIndexLen,
+		addressRecordSize: addressRecordSize,
+		addressPrefixLen:  addressPrefixLen,
 	}, nil
 }
 
@@ -146,16 +195,17 @@ func (s *Builder) Add(block *types.Block) error {
 	if err := s.headersEncoder.Encode(header); err != nil {
 		return err
 	}
-	offset := s.buf[:8]
-	blockLoc := s.buf[:8]
-	addressLoc := s.buf[:addressRecordSize]
-	addressPrefix := addressLoc[:addressPrefixLen]
-	locOfAddress := addressLoc[addressPrefixLen:addressRecordSize]
+	offsetFull := s.buf[:8]
+	offset := s.buf[:s.offsetLen]
+	blockLoc := s.buf[:s.offsetIndexLen*2]
+	addressLoc := s.buf[:s.addressRecordSize]
+	addressPrefix := addressLoc[:s.addressPrefixLen]
+	locOfAddress := addressLoc[s.addressPrefixLen:s.addressRecordSize]
 	writeAddress := func(uh types.UnlockHash) error {
 		copy(addressPrefix, uh[:])
 		if n, err := s.addresses.Write(addressLoc); err != nil {
 			return err
-		} else if n != addressRecordSize {
+		} else if n != s.addressRecordSize {
 			return io.ErrShortWrite
 		}
 		return nil
@@ -163,13 +213,14 @@ func (s *Builder) Add(block *types.Block) error {
 	firstMinerPayout := s.offsetIndex
 	// See Block.MarshalSia.
 	for _, mp := range block.MinerPayouts {
-		binary.LittleEndian.PutUint64(offset, s.blockchain.n)
+		binary.LittleEndian.PutUint64(offsetFull, s.blockchain.n)
 		if n, err := s.offsets.Write(offset); err != nil {
 			return err
-		} else if n != 8 {
+		} else if n != s.offsetLen {
 			return io.ErrShortWrite
 		}
-		binary.LittleEndian.PutUint32(locOfAddress, s.offsetIndex)
+		binary.LittleEndian.PutUint64(s.tmpBuf, s.offsetIndex)
+		copy(locOfAddress, s.tmpBuf)
 		if err := writeAddress(mp.UnlockHash); err != nil {
 			return err
 		}
@@ -180,13 +231,14 @@ func (s *Builder) Add(block *types.Block) error {
 	}
 	firstTransaction := s.offsetIndex
 	for i, tx := range block.Transactions {
-		binary.LittleEndian.PutUint64(offset, s.blockchain.n)
+		binary.LittleEndian.PutUint64(offsetFull, s.blockchain.n)
 		if n, err := s.offsets.Write(offset); err != nil {
 			return err
-		} else if n != 8 {
+		} else if n != s.offsetLen {
 			return io.ErrShortWrite
 		}
-		binary.LittleEndian.PutUint32(locOfAddress, s.offsetIndex)
+		binary.LittleEndian.PutUint64(s.tmpBuf, s.offsetIndex)
+		copy(locOfAddress, s.tmpBuf)
 		for _, si := range tx.SiacoinInputs {
 			if err := writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
 				return err
@@ -236,12 +288,17 @@ func (s *Builder) Add(block *types.Block) error {
 			return err
 		}
 	}
-	binary.LittleEndian.PutUint32(blockLoc[:4], firstMinerPayout)
-	binary.LittleEndian.PutUint32(blockLoc[4:], firstTransaction)
+	binary.LittleEndian.PutUint64(s.tmpBuf, firstMinerPayout)
+	copy(blockLoc[:s.offsetIndexLen], s.tmpBuf)
+	binary.LittleEndian.PutUint64(s.tmpBuf, firstTransaction)
+	copy(blockLoc[s.offsetIndexLen:], s.tmpBuf)
 	if n, err := s.blockLocations.Write(blockLoc); err != nil {
 		return err
-	} else if n != 8 {
+	} else if n != len(blockLoc) {
 		return io.ErrShortWrite
+	}
+	if s.blockchain.n > s.offsetEnd {
+		return fmt.Errorf("too large offset (%d > %d); increase offsetLen", s.blockchain.n, s.offsetEnd)
 	}
 	return nil
 }
