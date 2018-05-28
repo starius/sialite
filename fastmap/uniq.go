@@ -25,11 +25,11 @@ type Uniq struct {
 }
 
 func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes, values io.Writer) (*Uniq, error) {
-	fm, err := New(pageLen, keyLen, valueLen, prefixLen, data, prefixes)
+	fm, err := New(pageLen, keyLen, offsetLen, prefixLen, data, prefixes)
 	if err != nil {
 		return nil, err
 	}
-	fmRecord := make([]byte, keyLen+valueLen)
+	fmRecord := make([]byte, keyLen+offsetLen)
 	prevKey := fmRecord[:keyLen]
 	offsetBytes := fmRecord[keyLen:]
 	lenBuf := make([]byte, binary.MaxVarintLen64)
@@ -54,7 +54,7 @@ func (u *Uniq) dump() error {
 	if _, err := u.fm.Write(u.fmRecord); err != nil {
 		return err
 	}
-	l := binary.PutUvarint(u.lenBuf, uint64(len(u.batch)/4))
+	l := binary.PutUvarint(u.lenBuf, uint64(len(u.batch)/u.valueLen))
 	if n, err := u.values.Write(u.lenBuf[:l]); err != nil {
 		return err
 	} else if n != l {
