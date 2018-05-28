@@ -9,7 +9,7 @@ import (
 
 type Uniq struct {
 	fm               *Writer
-	indices          io.Writer
+	values           io.Writer
 	keyLen, valueLen int
 	offsetLen        int
 	fmRecord         []byte
@@ -21,10 +21,10 @@ type Uniq struct {
 	offset           uint64
 	offsetEnd        uint64
 
-	// TODO should write varints to indices
+	// TODO should write varints to values
 }
 
-func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes, indices io.Writer) (*Uniq, error) {
+func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes, values io.Writer) (*Uniq, error) {
 	fm, err := New(pageLen, keyLen, valueLen, prefixLen, data, prefixes)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes
 	offsetEnd := uint64(1 << uint(8*offsetLen))
 	return &Uniq{
 		fm:              fm,
-		indices:         indices,
+		values:          values,
 		keyLen:          keyLen,
 		valueLen:        valueLen,
 		offsetLen:       offsetLen,
@@ -55,12 +55,12 @@ func (u *Uniq) dump() error {
 		return err
 	}
 	l := binary.PutUvarint(u.lenBuf, uint64(len(u.batch)/4))
-	if n, err := u.indices.Write(u.lenBuf[:l]); err != nil {
+	if n, err := u.values.Write(u.lenBuf[:l]); err != nil {
 		return err
 	} else if n != l {
 		return io.ErrShortWrite
 	}
-	if n, err := u.indices.Write(u.batch); err != nil {
+	if n, err := u.values.Write(u.batch); err != nil {
 		return err
 	} else if n != len(u.batch) {
 		return io.ErrShortWrite
@@ -108,7 +108,7 @@ func (u *Uniq) Close() error {
 	if err := u.fm.Close(); err != nil {
 		return err
 	}
-	if c, ok := u.indices.(io.Closer); ok {
+	if c, ok := u.values.(io.Closer); ok {
 		if err := c.Close(); err != nil {
 			return err
 		}
