@@ -77,8 +77,11 @@ type Builder struct {
 
 func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen, addressPrefixLen, addressFastmapPrefixLen, addressOffsetLen int) (*Builder, error) {
 
+	bufferSize := 8 // Max of used buffers.
 	addressRecordSize := addressPrefixLen + offsetIndexLen
-	bufferSize := addressRecordSize // Max of used buffers.
+	if addressRecordSize > bufferSize {
+		bufferSize = addressRecordSize
+	}
 
 	if list, err := ioutil.ReadDir(dir); err != nil {
 		return nil, err
