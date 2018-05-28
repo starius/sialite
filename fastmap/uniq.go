@@ -7,6 +7,10 @@ import (
 	"io"
 )
 
+var (
+	ErrLowOffsetLen = fmt.Errorf("too large offset; increase offsetLen")
+)
+
 type Uniq struct {
 	fm               *Writer
 	values           io.Writer
@@ -67,7 +71,7 @@ func (u *Uniq) dump() error {
 	}
 	u.offset += uint64(l + len(u.batch))
 	if u.offset > u.offsetEnd {
-		return fmt.Errorf("too large offset; increase offsetLen")
+		return ErrLowOffsetLen
 	}
 	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
 	copy(u.offsetBytes, u.fullOffsetBytes)
@@ -77,7 +81,7 @@ func (u *Uniq) dump() error {
 
 func (u *Uniq) Write(b []byte) (int, error) {
 	if len(b) != u.keyLen+u.valueLen {
-		return 0, fmt.Errorf("Wrong record len")
+		return 0, fmt.Errorf("Wrong record len (%d != %d+%d)", len(b), u.keyLen, u.valueLen)
 	}
 	key := b[:u.keyLen]
 	value := b[u.keyLen:]
