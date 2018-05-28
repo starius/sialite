@@ -16,7 +16,7 @@ type Uniq struct {
 	prevKey          []byte
 	offsetBytes      []byte
 	fullOffsetBytes  []byte
-	values           []byte
+	batch            []byte
 	lenBuf           []byte
 	offset           uint64
 	offsetEnd        uint64
@@ -54,24 +54,24 @@ func (u *Uniq) dump() error {
 	if _, err := u.fm.Write(u.fmRecord); err != nil {
 		return err
 	}
-	l := binary.PutUvarint(u.lenBuf, uint64(len(u.values)/4))
+	l := binary.PutUvarint(u.lenBuf, uint64(len(u.batch)/4))
 	if n, err := u.indices.Write(u.lenBuf[:l]); err != nil {
 		return err
 	} else if n != l {
 		return io.ErrShortWrite
 	}
-	if n, err := u.indices.Write(u.values); err != nil {
+	if n, err := u.indices.Write(u.batch); err != nil {
 		return err
-	} else if n != len(u.values) {
+	} else if n != len(u.batch) {
 		return io.ErrShortWrite
 	}
-	u.offset += uint64(l + len(u.values))
+	u.offset += uint64(l + len(u.batch))
 	if u.offset > u.offsetEnd {
 		return fmt.Errorf("too large offset; increase offsetLen")
 	}
 	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
 	copy(u.offsetBytes, u.fullOffsetBytes)
-	u.values = u.values[:0]
+	u.batch = u.batch[:0]
 	return nil
 }
 
@@ -81,12 +81,12 @@ func (u *Uniq) Write(b []byte) (int, error) {
 	}
 	key := b[:u.keyLen]
 	value := b[u.keyLen:]
-	if len(u.values) == 0 {
+	if len(u.batch) == 0 {
 		// First record.
 		copy(u.prevKey, key)
 	} else {
 		if bytes.Equal(key, u.prevKey) {
-			if bytes.Equal(value, u.values[len(u.values)-u.valueLen:]) {
+			if bytes.Equal(value, u.batch[len(u.batch)-u.valueLen:]) {
 				// Repeated value - skip.
 				return len(b), nil
 			}
@@ -97,7 +97,7 @@ func (u *Uniq) Write(b []byte) (int, error) {
 			copy(u.prevKey, key)
 		}
 	}
-	u.values = append(u.values, value...)
+	u.batch = append(u.batch, value...)
 	return len(b), nil
 }
 
