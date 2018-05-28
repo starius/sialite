@@ -7,6 +7,10 @@ import (
 	"sort"
 )
 
+var (
+	ErrLowPrefixLen = fmt.Errorf("Prefix is too short")
+)
+
 type Writer struct {
 	pageLen, keyLen, valueLen, prefixLen int
 
@@ -65,7 +69,7 @@ func (w *Writer) Write(rec []byte) (int, error) {
 			remove++
 		}
 		if remove*w.keyLen == w.keyStart {
-			return 0, fmt.Errorf("Prefix is too short")
+			return 0, ErrLowPrefixLen
 		}
 		start := w.keyStart - remove*w.keyLen
 		n1 := copy(w.page, w.prevPage[start:w.keyStart])
