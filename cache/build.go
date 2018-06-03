@@ -84,7 +84,7 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	}
 
 	if list, err := ioutil.ReadDir(dir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ioutil.ReadDir(%q): %v", dir, err)
 	} else if len(list) != 0 {
 		return nil, fmt.Errorf("Output directory is not empty")
 	}
@@ -100,64 +100,64 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 
 	parametersJson, err := os.Create(path.Join(dir, "parameters.json"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening parameters.json: %v", err)
 	}
 	e := json.NewEncoder(parametersJson)
 	e.SetIndent("", "\t")
 	if err := e.Encode(p); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("JSON Encode: %v", err)
 	}
 	if err := parametersJson.Close(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("JSON Close: %v", err)
 	}
 
 	blockchain, err := os.Create(path.Join(dir, "blockchain"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening blockchain: %v", err)
 	}
 
 	headersFile, err := os.Create(path.Join(dir, "headers"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening headers: %v", err)
 	}
 	headersEncoder := encoding.NewEncoder(headersFile)
 
 	offsets, err := os.Create(path.Join(dir, "offsets"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening offsets: %v", err)
 	}
 
 	blockLocations, err := os.Create(path.Join(dir, "blockLocations"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening blockLocations: %v", err)
 	}
 
 	addressesFastmapData, err := os.Create(path.Join(dir, "addressesFastmapData"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening addressesFastmapData: %v", err)
 	}
 	addressesFastmapPrefixes, err := os.Create(path.Join(dir, "addressesFastmapPrefixes"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening addressesFastmapPrefixes: %v", err)
 	}
 
 	addressesIndices, err := os.Create(path.Join(dir, "addressesIndices"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening addressesIndices: %v", err)
 	}
 
 	addressesUniq, err := fastmap.NewUniq(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fastmap.NewUniq: %v", err)
 	}
 
 	addressestmp, err := os.Create(path.Join(dir, "addresses.tmp"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening addresses.tmp: %v", err)
 	}
 	addresses, err := emsort.New(addressesUniq, addressRecordSize, bytesLess, memLimit, addressestmp)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("emsort.New: %v", err)
 	}
 
 	if offsetLen > 8 {
