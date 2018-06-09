@@ -15,7 +15,6 @@ type Uniq struct {
 	fm               *Writer
 	values           io.Writer
 	keyLen, valueLen int
-	offsetLen        int
 	fmRecord         []byte
 	prevKey          []byte
 	offsetBytes      []byte
@@ -44,7 +43,6 @@ func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes
 		values:          values,
 		keyLen:          keyLen,
 		valueLen:        valueLen,
-		offsetLen:       offsetLen,
 		fmRecord:        fmRecord,
 		prevKey:         prevKey,
 		offsetBytes:     offsetBytes,
