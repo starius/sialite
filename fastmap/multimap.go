@@ -83,7 +83,7 @@ func (a *FFOOInliner) Uninline(container []byte) (bool, []byte, error) {
 }
 
 type MultiMapWriter struct {
-	fm               *Writer
+	fm               *MapWriter
 	values           io.Writer
 	keyLen, valueLen int
 	fmRecord         []byte
@@ -102,7 +102,7 @@ type MultiMapWriter struct {
 }
 
 func NewMultiMapWriter(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, data, prefixes, values io.Writer, inliner Inliner) (*MultiMapWriter, error) {
-	fm, err := New(pageLen, keyLen, containerLen, prefixLen, data, prefixes)
+	fm, err := NewMapWriter(pageLen, keyLen, containerLen, prefixLen, data, prefixes)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ type MultiMap struct {
 }
 
 func OpenMultiMap(pageLen, keyLen, valueLen, offsetLen, containerLen int, data, prefixes, values []byte, uninliner Uninliner) (*MultiMap, error) {
-	fm, err := Open(pageLen, keyLen, containerLen, data, prefixes)
+	fm, err := OpenMap(pageLen, keyLen, containerLen, data, prefixes)
 	if err != nil {
 		return nil, err
 	}

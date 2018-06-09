@@ -11,7 +11,7 @@ var (
 	ErrLowPrefixLen = fmt.Errorf("Prefix is too short")
 )
 
-type Writer struct {
+type MapWriter struct {
 	pageLen, keyLen, valueLen, prefixLen int
 
 	data, prefixes io.Writer
@@ -26,10 +26,10 @@ type Writer struct {
 	hasPrevPage bool
 }
 
-func New(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Writer) (*Writer, error) {
+func NewMapWriter(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Writer) (*MapWriter, error) {
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen
-	return &Writer{
+	return &MapWriter{
 		pageLen:     pageLen,
 		keyLen:      keyLen,
 		valueLen:    valueLen,
@@ -44,7 +44,7 @@ func New(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Writer) (*W
 	}, nil
 }
 
-func (w *Writer) Write(rec []byte) (int, error) {
+func (w *MapWriter) Write(rec []byte) (int, error) {
 	if len(rec) != w.keyLen+w.valueLen {
 		return 0, fmt.Errorf("Wrong write size")
 	}
@@ -115,7 +115,7 @@ func (w *Writer) Write(rec []byte) (int, error) {
 	return len(rec), nil
 }
 
-func (w *Writer) Close() error {
+func (w *MapWriter) Close() error {
 	if w.hasPrevPage {
 		w.page = w.prevPage
 	}
@@ -153,7 +153,7 @@ type Map struct {
 	data, prefixes []byte
 }
 
-func Open(pageLen, keyLen, valueLen int, data, prefixes []byte) (*Map, error) {
+func OpenMap(pageLen, keyLen, valueLen int, data, prefixes []byte) (*Map, error) {
 	npages := len(data) / pageLen
 	if npages*pageLen != len(data) {
 		return nil, fmt.Errorf("data length is not divided by pageLen")

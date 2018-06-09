@@ -54,10 +54,10 @@ next:
 	for _, c := range cases {
 		// Build.
 		var data, prefixes bytes.Buffer
-		w, err := New(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, &data, &prefixes)
+		w, err := NewMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, &data, &prefixes)
 		name := fmt.Sprintf("(%d, %d, %d, %d, data, prefixes)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen)
 		if err != nil {
-			t.Errorf("New%s: %v", name, err)
+			t.Errorf("NewMapWriter%s: %v", name, err)
 			continue next
 		}
 		record := make([]byte, c.keyLen+c.valueLen)
@@ -90,7 +90,7 @@ next:
 			continue next
 		}
 		// Check the map.
-		m, err := Open(c.pageLen, c.keyLen, c.valueLen, data.Bytes(), prefixes.Bytes())
+		m, err := OpenMap(c.pageLen, c.keyLen, c.valueLen, data.Bytes(), prefixes.Bytes())
 		if err != nil {
 			t.Errorf("Open%s: %v", name, err)
 			continue next
