@@ -27,7 +27,7 @@ type Server struct {
 	AddressesFastmapData     []byte
 	AddressesFastmapPrefixes []byte
 	AddressesIndices         []byte
-	addressMap               *fastmap.UniqMap
+	addressMap               *fastmap.MultiMap
 
 	offsetLen        int
 	offsetIndexLen   int
@@ -81,7 +81,7 @@ func NewServer(dir string) (*Server, error) {
 		uninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
 		containerLen = 2 * par.OffsetIndexLen
 	}
-	addressMap, err := fastmap.OpenUniq(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, containerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, uninliner)
+	addressMap, err := fastmap.OpenMultiMap(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, containerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, uninliner)
 	if err != nil {
 		return nil, err
 	}

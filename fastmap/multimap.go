@@ -82,7 +82,7 @@ func (a *FFOOInliner) Uninline(container []byte) (bool, []byte, error) {
 	}
 }
 
-type Uniq struct {
+type MultiMapWriter struct {
 	fm               *Writer
 	values           io.Writer
 	keyLen, valueLen int
@@ -101,7 +101,7 @@ type Uniq struct {
 	// TODO should write varints to values
 }
 
-func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, data, prefixes, values io.Writer, inliner Inliner) (*Uniq, error) {
+func NewMultiMapWriter(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, data, prefixes, values io.Writer, inliner Inliner) (*MultiMapWriter, error) {
 	fm, err := New(pageLen, keyLen, containerLen, prefixLen, data, prefixes)
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, 
 	fullOffsetBytes := make([]byte, 8)
 	offsetBytes := fullOffsetBytes[:offsetLen]
 	offsetEnd := uint64(1 << uint(8*offsetLen))
-	return &Uniq{
+	return &MultiMapWriter{
 		fm:              fm,
 		values:          values,
 		keyLen:          keyLen,
@@ -129,7 +129,7 @@ func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, 
 	}, nil
 }
 
-func (u *Uniq) dump() error {
+func (u *MultiMapWriter) dump() error {
 	// Try to inline.
 	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
 	isInlined, err := u.inliner.Inline(u.container, u.batch, u.offsetBytes)
@@ -165,7 +165,7 @@ func (u *Uniq) dump() error {
 	return nil
 }
 
-func (u *Uniq) Write(b []byte) (int, error) {
+func (u *MultiMapWriter) Write(b []byte) (int, error) {
 	if len(b) != u.keyLen+u.valueLen {
 		return 0, fmt.Errorf("Wrong record len (%d != %d+%d)", len(b), u.keyLen, u.valueLen)
 	}
@@ -191,7 +191,7 @@ func (u *Uniq) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (u *Uniq) Close() error {
+func (u *MultiMapWriter) Close() error {
 	if err := u.dump(); err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (u *Uniq) Close() error {
 	return nil
 }
 
-type UniqMap struct {
+type MultiMap struct {
 	fm *Map
 
 	values   []byte
@@ -215,12 +215,12 @@ type UniqMap struct {
 	uninliner Uninliner
 }
 
-func OpenUniq(pageLen, keyLen, valueLen, offsetLen, containerLen int, data, prefixes, values []byte, uninliner Uninliner) (*UniqMap, error) {
+func OpenMultiMap(pageLen, keyLen, valueLen, offsetLen, containerLen int, data, prefixes, values []byte, uninliner Uninliner) (*MultiMap, error) {
 	fm, err := Open(pageLen, keyLen, containerLen, data, prefixes)
 	if err != nil {
 		return nil, err
 	}
-	return &UniqMap{
+	return &MultiMap{
 		fm:        fm,
 		values:    values,
 		valueLen:  valueLen,
@@ -228,7 +228,7 @@ func OpenUniq(pageLen, keyLen, valueLen, offsetLen, containerLen int, data, pref
 	}, nil
 }
 
-func (u *UniqMap) Lookup(key []byte) ([]byte, error) {
+func (u *MultiMap) Lookup(key []byte) ([]byte, error) {
 	container, err := u.fm.Lookup(key)
 	if err != nil || container == nil {
 		return nil, err

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestUniq(t *testing.T) {
+func TestMultiMap(t *testing.T) {
 	type pair struct {
 		key    []byte
 		values [][]byte
@@ -71,18 +71,18 @@ next:
 		name := fmt.Sprintf("(%d, %d, %d, %d, %d, %d, data, prefixes, values, %v)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, c.withInliner)
 		// Build.
 		var data, prefixes, values bytes.Buffer
-		var w *Uniq
+		var w *MultiMapWriter
 		var err error
 		if c.withInliner {
 			if c.valueLen != c.offsetLen {
 				t.Errorf("%s: c.valueLen != c.offsetLen", name)
 			}
-			w, err = NewUniq(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, 2*c.offsetLen, &data, &prefixes, &values, NewFFOOInliner(c.valueLen))
+			w, err = NewMultiMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, 2*c.offsetLen, &data, &prefixes, &values, NewFFOOInliner(c.valueLen))
 		} else {
-			w, err = NewUniq(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, &data, &prefixes, &values, NoInliner{})
+			w, err = NewMultiMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, &data, &prefixes, &values, NoInliner{})
 		}
 		if err != nil {
-			t.Errorf("NewUniq%s: %v", name, err)
+			t.Errorf("NewMultiMapWriter%s: %v", name, err)
 			continue next
 		}
 		record := make([]byte, c.keyLen+c.valueLen)
@@ -120,14 +120,14 @@ next:
 			continue next
 		}
 		// Check the map.
-		var m *UniqMap
+		var m *MultiMap
 		if c.withInliner {
-			m, err = OpenUniq(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, 2*c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(c.valueLen))
+			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, 2*c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(c.valueLen))
 		} else {
-			m, err = OpenUniq(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NoUninliner{})
+			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NoUninliner{})
 		}
 		if err != nil {
-			t.Errorf("OpenUniq%s: %v", name, err)
+			t.Errorf("OpenMultiMap%s: %v", name, err)
 			continue next
 		}
 		for _, p := range pairs {

@@ -153,16 +153,16 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		containerLen = 2 * offsetIndexLen
 	}
 
-	addressesUniq, err := fastmap.NewUniq(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, containerLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices, inliner)
+	addressesMultiMapWriter, err := fastmap.NewMultiMapWriter(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, containerLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices, inliner)
 	if err != nil {
-		return nil, fmt.Errorf("fastmap.NewUniq: %v", err)
+		return nil, fmt.Errorf("fastmap.NewMultiMapWriter: %v", err)
 	}
 
 	addressestmp, err := os.Create(path.Join(dir, "addresses.tmp"))
 	if err != nil {
 		return nil, fmt.Errorf("opening addresses.tmp: %v", err)
 	}
-	addresses, err := emsort.New(addressesUniq, addressRecordSize, bytesLess, memLimit, addressestmp)
+	addresses, err := emsort.New(addressesMultiMapWriter, addressRecordSize, bytesLess, memLimit, addressestmp)
 	if err != nil {
 		return nil, fmt.Errorf("emsort.New: %v", err)
 	}
