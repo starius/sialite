@@ -52,23 +52,35 @@ func TestUniq(t *testing.T) {
 		valueLen, prefixLen int
 		offsetLen           int
 		lowOffsetLen        bool
+		withInliner         bool
 	}{
-		{4096, 32, 20, 5, 4, false},
-		{4096, 32, 20, 2, 4, false},
-		{100, 32, 20, 4, 4, false},
-		{1024, 32, 20, 5, 4, false},
-		{8192, 32, 20, 5, 4, false},
-		{4096, 16, 4, 5, 4, false},
-		{4096, 15, 4, 5, 4, false},
-		{4096, 5, 10, 2, 4, false},
-		{4096, 5, 10, 2, 1, true},
+		{4096, 32, 20, 5, 4, false, false},
+		{4096, 32, 20, 2, 4, false, false},
+		{100, 32, 20, 4, 4, false, false},
+		{1024, 32, 20, 5, 4, false, false},
+		{8192, 32, 20, 5, 4, false, false},
+		{4096, 16, 4, 5, 4, false, false},
+		{4096, 15, 4, 5, 4, false, false},
+		{4096, 16, 4, 5, 4, false, true},
+		{4096, 16, 3, 5, 3, false, true},
+		{4096, 5, 10, 2, 4, false, false},
+		{4096, 5, 10, 2, 1, true, false},
 	}
 next:
 	for _, c := range cases {
+		name := fmt.Sprintf("(%d, %d, %d, %d, %d, %d, data, prefixes, values, %v)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, c.withInliner)
 		// Build.
 		var data, prefixes, values bytes.Buffer
-		w, err := NewUniq(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, &data, &prefixes, &values)
-		name := fmt.Sprintf("(%d, %d, %d, %d, %d, data, prefixes, values)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen)
+		var w *Uniq
+		var err error
+		if c.withInliner {
+			if c.valueLen != c.offsetLen {
+				t.Errorf("%s: c.valueLen != c.offsetLen", name)
+			}
+			w, err = NewUniq(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, 2*c.offsetLen, &data, &prefixes, &values, NewFFOOInliner(c.valueLen))
+		} else {
+			w, err = NewUniq(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, &data, &prefixes, &values, NoInliner{})
+		}
 		if err != nil {
 			t.Errorf("NewUniq%s: %v", name, err)
 			continue next
@@ -85,6 +97,9 @@ next:
 			prevKey = p.key[:c.keyLen]
 			for _, value1 := range p.values {
 				copy(value, value1)
+				if bytes.Equal(value, ffff) || bytes.Equal(value, oooo) {
+					t.Fatalf("%s: value of all zeros or of all FF", name)
+				}
 				if n, err := w.Write(record); err != nil {
 					if !c.lowOffsetLen || err != ErrLowOffsetLen {
 						t.Errorf("%s.Write(): %v", name, err)
@@ -105,7 +120,12 @@ next:
 			continue next
 		}
 		// Check the map.
-		m, err := OpenUniq(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes())
+		var m *UniqMap
+		if c.withInliner {
+			m, err = OpenUniq(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, 2*c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(c.valueLen))
+		} else {
+			m, err = OpenUniq(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NoUninliner{})
+		}
 		if err != nil {
 			t.Errorf("OpenUniq%s: %v", name, err)
 			continue next

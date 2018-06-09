@@ -75,7 +75,13 @@ func NewServer(dir string) (*Server, error) {
 			v.Field(i).SetBytes(buf)
 		}
 	}
-	addressMap, err := fastmap.OpenUniq(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices)
+	var uninliner fastmap.Uninliner = fastmap.NoUninliner{}
+	containerLen := par.OffsetIndexLen
+	if par.AddressOffsetLen == par.OffsetIndexLen {
+		uninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
+		containerLen = 2 * par.OffsetIndexLen
+	}
+	addressMap, err := fastmap.OpenUniq(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, containerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, uninliner)
 	if err != nil {
 		return nil, err
 	}

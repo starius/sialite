@@ -146,7 +146,14 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		return nil, fmt.Errorf("opening addressesIndices: %v", err)
 	}
 
-	addressesUniq, err := fastmap.NewUniq(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices)
+	var inliner fastmap.Inliner = fastmap.NoInliner{}
+	containerLen := offsetIndexLen
+	if addressOffsetLen == offsetIndexLen {
+		inliner = fastmap.NewFFOOInliner(offsetIndexLen)
+		containerLen = 2 * offsetIndexLen
+	}
+
+	addressesUniq, err := fastmap.NewUniq(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, containerLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices, inliner)
 	if err != nil {
 		return nil, fmt.Errorf("fastmap.NewUniq: %v", err)
 	}

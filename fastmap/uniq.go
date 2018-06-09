@@ -11,12 +11,84 @@ var (
 	ErrLowOffsetLen = fmt.Errorf("too large offset; increase offsetLen")
 )
 
+type Inliner interface {
+	Inline(container, values, offset []byte) (bool, error)
+}
+
+type Uninliner interface {
+	Uninline(container []byte) (bool, []byte, error)
+}
+
+type NoInliner struct {
+}
+
+func (n NoInliner) Inline(container, values, offset []byte) (bool, error) {
+	copy(container, offset)
+	return false, nil
+}
+
+type NoUninliner struct {
+}
+
+func (n NoUninliner) Uninline(container []byte) (bool, []byte, error) {
+	return false, container, nil
+}
+
+var (
+	oooo = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	ffff = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+)
+
+type FFOOInliner struct {
+	valueLen int // offsetLen = valueLen <= 4.
+}
+
+func NewFFOOInliner(valueLen int) *FFOOInliner {
+	if valueLen < 1 || valueLen > 4 {
+		panic("bad valueLen")
+	}
+	return &FFOOInliner{valueLen}
+}
+
+func (a *FFOOInliner) Inline(container, values, offset []byte) (bool, error) {
+	for start := 0; start < len(values); start += a.valueLen {
+		stop := start + a.valueLen
+		value := values[start:stop]
+		if bytes.Equal(value, ffff) || bytes.Equal(value, oooo) {
+			return false, fmt.Errorf("Inline was called with value %v", value)
+		}
+	}
+	if len(values) == a.valueLen {
+		copy(container[:a.valueLen], ffff)
+		copy(container[a.valueLen:], values)
+		return true, nil
+	} else if len(values) == 2*a.valueLen {
+		copy(container, values)
+		return true, nil
+	} else {
+		copy(container[:a.valueLen], oooo)
+		copy(container[a.valueLen:], offset)
+		return false, nil
+	}
+}
+
+func (a *FFOOInliner) Uninline(container []byte) (bool, []byte, error) {
+	if bytes.Equal(container[:a.valueLen], oooo[:a.valueLen]) {
+		return false, container[a.valueLen:], nil
+	} else if bytes.Equal(container[:a.valueLen], ffff[:a.valueLen]) {
+		return true, container[a.valueLen:], nil
+	} else {
+		return true, container, nil
+	}
+}
+
 type Uniq struct {
 	fm               *Writer
 	values           io.Writer
 	keyLen, valueLen int
 	fmRecord         []byte
 	prevKey          []byte
+	container        []byte
 	offsetBytes      []byte
 	fullOffsetBytes  []byte
 	batch            []byte
@@ -24,19 +96,22 @@ type Uniq struct {
 	offset           uint64
 	offsetEnd        uint64
 
+	inliner Inliner
+
 	// TODO should write varints to values
 }
 
-func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes, values io.Writer) (*Uniq, error) {
-	fm, err := New(pageLen, keyLen, offsetLen, prefixLen, data, prefixes)
+func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, data, prefixes, values io.Writer, inliner Inliner) (*Uniq, error) {
+	fm, err := New(pageLen, keyLen, containerLen, prefixLen, data, prefixes)
 	if err != nil {
 		return nil, err
 	}
-	fmRecord := make([]byte, keyLen+offsetLen)
+	fmRecord := make([]byte, keyLen+containerLen)
 	prevKey := fmRecord[:keyLen]
-	offsetBytes := fmRecord[keyLen:]
+	container := fmRecord[keyLen:]
 	lenBuf := make([]byte, binary.MaxVarintLen64)
 	fullOffsetBytes := make([]byte, 8)
+	offsetBytes := fullOffsetBytes[:offsetLen]
 	offsetEnd := uint64(1 << uint(8*offsetLen))
 	return &Uniq{
 		fm:              fm,
@@ -45,14 +120,29 @@ func NewUniq(pageLen, keyLen, valueLen, prefixLen, offsetLen int, data, prefixes
 		valueLen:        valueLen,
 		fmRecord:        fmRecord,
 		prevKey:         prevKey,
+		container:       container,
 		offsetBytes:     offsetBytes,
 		fullOffsetBytes: fullOffsetBytes,
 		lenBuf:          lenBuf,
 		offsetEnd:       offsetEnd,
+		inliner:         inliner,
 	}, nil
 }
 
 func (u *Uniq) dump() error {
+	// Try to inline.
+	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
+	isInlined, err := u.inliner.Inline(u.container, u.batch, u.offsetBytes)
+	if err != nil {
+		return fmt.Errorf("inliner: %v", err)
+	} else if isInlined {
+		if _, err := u.fm.Write(u.fmRecord); err != nil {
+			return err
+		}
+		u.batch = u.batch[:0]
+		return nil
+	}
+	// No-inline case.
 	if _, err := u.fm.Write(u.fmRecord); err != nil {
 		return err
 	}
@@ -71,8 +161,6 @@ func (u *Uniq) dump() error {
 	if u.offset > u.offsetEnd {
 		return ErrLowOffsetLen
 	}
-	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
-	copy(u.offsetBytes, u.fullOffsetBytes)
 	u.batch = u.batch[:0]
 	return nil
 }
@@ -123,28 +211,39 @@ type UniqMap struct {
 
 	values   []byte
 	valueLen int
+
+	uninliner Uninliner
 }
 
-func OpenUniq(pageLen, keyLen, valueLen, offsetLen int, data, prefixes, values []byte) (*UniqMap, error) {
-	fm, err := Open(pageLen, keyLen, offsetLen, data, prefixes)
+func OpenUniq(pageLen, keyLen, valueLen, offsetLen, containerLen int, data, prefixes, values []byte, uninliner Uninliner) (*UniqMap, error) {
+	fm, err := Open(pageLen, keyLen, containerLen, data, prefixes)
 	if err != nil {
 		return nil, err
 	}
 	return &UniqMap{
-		fm:       fm,
-		values:   values,
-		valueLen: valueLen,
+		fm:        fm,
+		values:    values,
+		valueLen:  valueLen,
+		uninliner: uninliner,
 	}, nil
 }
 
 func (u *UniqMap) Lookup(key []byte) ([]byte, error) {
-	offsetBytes, err := u.fm.Lookup(key)
-	if err != nil || offsetBytes == nil {
+	container, err := u.fm.Lookup(key)
+	if err != nil || container == nil {
 		return nil, err
 	}
+	// Check if it is inlined.
+	isInlined, uninlined, err := u.uninliner.Uninline(container)
+	if err != nil {
+		return nil, fmt.Errorf("uninliner: %v", err)
+	} else if isInlined {
+		return uninlined, nil
+	}
+	// No-inline case.
 	var fullOffset [8]byte
 	fullOffsetBytes := fullOffset[:]
-	copy(fullOffsetBytes, offsetBytes)
+	copy(fullOffsetBytes, uninlined)
 	lenPos := int(binary.LittleEndian.Uint64(fullOffsetBytes))
 	size0, l := binary.Uvarint(u.values[lenPos:])
 	if l <= 0 {
