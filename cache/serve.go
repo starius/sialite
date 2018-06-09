@@ -137,7 +137,9 @@ func (s *Server) GetHistory(address []byte, start string) (history []Item, next 
 	for i := 0; i < size; i++ {
 		indexEnd := indexPos + s.offsetIndexLen
 		copy(tmpBytes, values[indexPos:indexEnd])
-		itemIndex := int(binary.LittleEndian.Uint64(tmpBytes))
+		// Value 0 is special on wire, so all indices are shifted.
+		wireItemIndex := int(binary.LittleEndian.Uint64(tmpBytes))
+		itemIndex := wireItemIndex - 1
 		indexPos = indexEnd
 		item, err := s.getItem(itemIndex)
 		if err != nil {

@@ -222,7 +222,8 @@ func (s *Builder) Add(block *types.Block) error {
 		} else if n != s.offsetLen {
 			return io.ErrShortWrite
 		}
-		binary.LittleEndian.PutUint64(s.tmpBuf, s.offsetIndex)
+		wireOffsetIndex := s.offsetIndex + 1 // To avoid special 0 value on wire.
+		binary.LittleEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
 		copy(locOfAddress, s.tmpBuf)
 		if err := writeAddress(mp.UnlockHash); err != nil {
 			return err
@@ -240,7 +241,8 @@ func (s *Builder) Add(block *types.Block) error {
 		} else if n != s.offsetLen {
 			return io.ErrShortWrite
 		}
-		binary.LittleEndian.PutUint64(s.tmpBuf, s.offsetIndex)
+		wireOffsetIndex := s.offsetIndex + 1 // To avoid special 0 value on wire.
+		binary.LittleEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
 		copy(locOfAddress, s.tmpBuf)
 		for _, si := range tx.SiacoinInputs {
 			if err := writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
