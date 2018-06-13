@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
+	"runtime/pprof"
 	"sync"
 
 	"github.com/NebulousLabs/Sia/types"
@@ -18,6 +20,8 @@ var (
 	memLimit   = flag.Int("memlimit", 64*1024*1024, "Memory limit, bytes")
 	nblocks    = flag.Int("nblocks", 0, "Approximate max number of blocks (0 = all)")
 
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+
 	offsetLen               = flag.Int("offset_len", 8, "sizeof(offset in blockchain file)")
 	offsetIndexLen          = flag.Int("offset_index_len", 4, "sizeof(index in offsets file)")
 	addressPageLen          = flag.Int("address_page_len", 4096, "sizeof(page in addressesFastmapData)")
@@ -28,6 +32,14 @@ var (
 
 func main() {
 	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 	ctx := context.Background()
 	b, err := cache.NewBuilder(*files, *memLimit, *offsetLen, *offsetIndexLen, *addressPageLen, *addressPrefixLen, *addressFastmapPrefixLen, *addressOffsetLen)
 	if err != nil {
