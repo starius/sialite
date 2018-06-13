@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
@@ -18,7 +19,8 @@ import (
 )
 
 type countingWriter struct {
-	impl *os.File
+	impl *bufio.Writer
+	file *os.File
 	n    uint64
 }
 
@@ -26,6 +28,13 @@ func (w *countingWriter) Write(p []byte) (int, error) {
 	n, err := w.impl.Write(p)
 	w.n += uint64(n)
 	return n, err
+}
+
+func (w *countingWriter) Close() error {
+	if err := w.impl.Flush(); err != nil {
+		return err
+	}
+	return w.file.Close()
 }
 
 func bytesLess(a []byte, b []byte) bool {
@@ -173,7 +182,8 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 
 	return &Builder{
 		blockchain: &countingWriter{
-			impl: blockchain,
+			impl: bufio.NewWriter(blockchain),
+			file: blockchain,
 		},
 		headersFile:    headersFile,
 		headersEncoder: headersEncoder,
@@ -316,7 +326,7 @@ func (s *Builder) Add(block *types.Block) error {
 }
 
 func (s *Builder) Build() error {
-	if err := s.blockchain.impl.Close(); err != nil {
+	if err := s.blockchain.Close(); err != nil {
 		return err
 	}
 	if err := s.headersFile.Close(); err != nil {
