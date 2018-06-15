@@ -16,6 +16,8 @@ type MapWriter struct {
 
 	data, prefixes io.Writer
 
+	ffff []byte
+
 	valuesStart int
 	prevKey     []byte
 	page        []byte
@@ -29,6 +31,10 @@ type MapWriter struct {
 func NewMapWriter(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Writer) (*MapWriter, error) {
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen
+	ffff := make([]byte, keyLen)
+	for i := range ffff {
+		ffff[i] = 0xFF
+	}
 	return &MapWriter{
 		pageLen:     pageLen,
 		keyLen:      keyLen,
@@ -36,6 +42,7 @@ func NewMapWriter(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Wr
 		prefixLen:   prefixLen,
 		data:        data,
 		prefixes:    prefixes,
+		ffff:        ffff,
 		valuesStart: valuesStart,
 		prevKey:     make([]byte, keyLen),
 		page:        make([]byte, pageLen),
@@ -50,6 +57,9 @@ func (w *MapWriter) Write(rec []byte) (int, error) {
 	}
 	key := rec[:w.keyLen]
 	value := rec[w.keyLen:]
+	if bytes.Equal(key, w.ffff) {
+		return 0, fmt.Errorf("key has all bytes FF, which is a special value")
+	}
 	if w.npages != 0 {
 		if c := bytes.Compare(w.prevKey, key); c == 0 {
 			return 0, fmt.Errorf("Input has duplicates")
