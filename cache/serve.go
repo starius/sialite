@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/starius/sialite/fastmap"
 )
 
@@ -127,6 +128,9 @@ type Item struct {
 }
 
 func (s *Server) GetHistory(address []byte, start string) (history []Item, next string, err error) {
+	if len(address) != crypto.HashSize {
+		return nil, "", fmt.Errorf("size of address: want %d, got %d", crypto.HashSize, len(address))
+	}
 	addressPrefix := address[:s.addressPrefixLen]
 	values, err := s.addressMap.Lookup(addressPrefix)
 	if err != nil || values == nil {
