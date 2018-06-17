@@ -3,6 +3,7 @@ package fastmap
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -146,6 +147,38 @@ next:
 					}
 				}
 			}
+		}
+	}
+}
+
+func TestMultiMapFFOORefectsFFAnd00inValues(t *testing.T) {
+	errNew := errors.New("NewMultiMapWriter")
+	errWrite := errors.New("Write")
+	errClose := errors.New("Close")
+	f := func(value0 []byte) error {
+		var data, prefixes, values bytes.Buffer
+		w, err := NewMultiMapWriter(4096, 4, 4, 4, 4, 2*4, &data, &prefixes, &values, NewFFOOInliner(4))
+		if err != nil {
+			return errNew
+		}
+		record := make([]byte, 4+4)
+		key := record[:4]
+		value := record[4:]
+		for i := range key {
+			key[i] = 0x42
+		}
+		copy(value, value0)
+		if _, err := w.Write(record); err != nil {
+			return errWrite
+		}
+		if err := w.Close(); err != nil {
+			return errClose
+		}
+		return nil
+	}
+	for _, value := range [][]byte{{0xFF, 0xFF, 0xFF, 0xFF}, {0x00, 0x00, 0x00, 0x00}} {
+		if err := f(value); err != errWrite && err != errClose {
+			t.Errorf("wanted to get and error about FF/00 in values")
 		}
 	}
 }

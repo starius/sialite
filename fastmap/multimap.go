@@ -54,7 +54,7 @@ func (a *FFOOInliner) Inline(container, values, offset []byte) (bool, error) {
 	for start := 0; start < len(values); start += a.valueLen {
 		stop := start + a.valueLen
 		value := values[start:stop]
-		if bytes.Equal(value, ffff) || bytes.Equal(value, oooo) {
+		if bytes.Equal(value, ffff[:a.valueLen]) || bytes.Equal(value, oooo[:a.valueLen]) {
 			return false, fmt.Errorf("Inline was called with value %v", value)
 		}
 	}
