@@ -107,3 +107,23 @@ next:
 		}
 	}
 }
+
+func TestFastmapRejectsFFKeys(t *testing.T) {
+	var data, prefixes bytes.Buffer
+	w, err := NewMapWriter(4096, 10, 10, 10, &data, &prefixes)
+	if err != nil {
+		t.Fatalf("NewMapWriter: %v", err)
+	}
+	record := make([]byte, 10+10)
+	key := record[:10]
+	value := record[10:]
+	for i := range key {
+		key[i] = 0xFF
+	}
+	for i := range value {
+		value[i] = 0x42
+	}
+	if _, err := w.Write(record); err == nil {
+		t.Errorf("Write(): want an error because the key is FFFF")
+	}
+}
