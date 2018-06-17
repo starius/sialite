@@ -325,7 +325,7 @@ func (s *Builder) Add(block *types.Block) error {
 	return nil
 }
 
-func (s *Builder) Build() error {
+func (s *Builder) Close() error {
 	if err := s.blockchain.Close(); err != nil {
 		return err
 	}

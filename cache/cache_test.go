@@ -140,8 +140,8 @@ next:
 				continue next
 			}
 		}
-		if err := b.Build(); err != nil {
-			t.Errorf("b.Build: %v", err)
+		if err := b.Close(); err != nil {
+			t.Errorf("b.Close: %v", err)
 			continue next
 		}
 		s, err := NewServer(tmpDir)

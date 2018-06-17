@@ -78,7 +78,7 @@ func main() {
 	for range bchan {
 	}
 	wg.Wait()
-	if err := b.Build(); err != nil {
+	if err := b.Close(); err != nil {
 		panic(err)
 	}
 }
