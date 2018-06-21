@@ -54,7 +54,7 @@ func main() {
 	flag.Parse()
 	s1, err := cache.NewServer(*files)
 	if err != nil {
-		log.Fatalf("cache.NewBuilder: %v", err)
+		log.Fatalf("cache.NewServer: %v", err)
 	}
 	s = s1
 	http.HandleFunc("/v1/history", handler)
