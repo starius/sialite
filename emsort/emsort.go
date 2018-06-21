@@ -7,6 +7,7 @@ package emsort
 
 import (
 	"bufio"
+	"bytes"
 	"container/heap"
 	"fmt"
 	"io"
@@ -28,6 +29,10 @@ type SortedWriter interface {
 // Less is a function that compares two byte arrays and determines whether a is
 // less than b.
 type Less func(a []byte, b []byte) bool
+
+func BytesLess(a []byte, b []byte) bool {
+	return bytes.Compare(a, b) == -1
+}
 
 // New constructs a new SortedWriter that wraps out, chunks data into sortable
 // items using the given chunk size, compares them using the given Less and limits

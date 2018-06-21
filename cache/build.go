@@ -2,7 +2,6 @@ package cache
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -35,10 +34,6 @@ func (w *countingWriter) Close() error {
 		return err
 	}
 	return w.file.Close()
-}
-
-func bytesLess(a []byte, b []byte) bool {
-	return bytes.Compare(a, b) == -1
 }
 
 type parameters struct {
@@ -171,7 +166,7 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	if err != nil {
 		return nil, fmt.Errorf("opening addresses.tmp: %v", err)
 	}
-	addresses, err := emsort.New(addressesMultiMapWriter, addressRecordSize, bytesLess, memLimit, addressestmp)
+	addresses, err := emsort.New(addressesMultiMapWriter, addressRecordSize, emsort.BytesLess, memLimit, addressestmp)
 	if err != nil {
 		return nil, fmt.Errorf("emsort.New: %v", err)
 	}
