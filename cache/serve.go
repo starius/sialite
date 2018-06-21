@@ -151,7 +151,7 @@ func (s *Server) GetHistory(address []byte, start string) (history []Item, next 
 		wireItemIndex := int(binary.LittleEndian.Uint64(tmpBytes))
 		itemIndex := wireItemIndex - 1
 		indexPos = indexEnd
-		item, err := s.getItem(itemIndex)
+		item, err := s.GetItem(itemIndex)
 		if err != nil {
 			return nil, "", err
 		}
@@ -160,11 +160,15 @@ func (s *Server) GetHistory(address []byte, start string) (history []Item, next 
 	return history, "", nil
 }
 
-func (s *Server) getItem(itemIndex int) (Item, error) {
+var (
+	ErrTooLargeIndex = fmt.Errorf("Error in database: too large item index")
+)
+
+func (s *Server) GetItem(itemIndex int) (Item, error) {
 	var tmp [8]byte
 	tmpBytes := tmp[:]
 	if itemIndex >= s.nitems {
-		return Item{}, fmt.Errorf("Error in database: too large item index")
+		return Item{}, ErrTooLargeIndex
 	}
 	start := itemIndex * s.offsetLen
 	copy(tmpBytes, s.Offsets[start:start+s.offsetLen])
