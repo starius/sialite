@@ -2,6 +2,7 @@ package cache
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -16,25 +17,6 @@ import (
 	"github.com/starius/sialite/emsort"
 	"github.com/starius/sialite/fastmap"
 )
-
-type countingWriter struct {
-	impl *bufio.Writer
-	file *os.File
-	n    uint64
-}
-
-func (w *countingWriter) Write(p []byte) (int, error) {
-	n, err := w.impl.Write(p)
-	w.n += uint64(n)
-	return n, err
-}
-
-func (w *countingWriter) Close() error {
-	if err := w.impl.Flush(); err != nil {
-		return err
-	}
-	return w.file.Close()
-}
 
 type parameters struct {
 	OffsetLen               int
@@ -52,7 +34,10 @@ type blockHeader struct {
 }
 
 type Builder struct {
-	blockchain *countingWriter
+	blockchain    *os.File
+	blockchainBuf *bufio.Writer
+	blockchainLen uint64
+	dataBuf       bytes.Buffer
 
 	// Series of blockHeader.
 	headersFile    *os.File
@@ -176,10 +161,8 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	}
 
 	return &Builder{
-		blockchain: &countingWriter{
-			impl: bufio.NewWriter(blockchain),
-			file: blockchain,
-		},
+		blockchain:     blockchain,
+		blockchainBuf:  bufio.NewWriter(blockchain),
 		headersFile:    headersFile,
 		headersEncoder: headersEncoder,
 
@@ -228,7 +211,7 @@ func (s *Builder) Add(block *types.Block) error {
 	firstMinerPayout := s.offsetIndex
 	// See Block.MarshalSia.
 	for _, mp := range block.MinerPayouts {
-		binary.LittleEndian.PutUint64(offsetFull, s.blockchain.n)
+		binary.LittleEndian.PutUint64(offsetFull, s.blockchainLen)
 		if n, err := s.offsets.Write(offset); err != nil {
 			return err
 		} else if n != s.offsetLen {
@@ -241,13 +224,17 @@ func (s *Builder) Add(block *types.Block) error {
 			return err
 		}
 		s.offsetIndex++
-		if err := mp.MarshalSia(s.blockchain); err != nil {
+		if err := mp.MarshalSia(&s.dataBuf); err != nil {
+			return err
+		}
+		s.blockchainLen += uint64(s.dataBuf.Len())
+		if _, err := s.dataBuf.WriteTo(s.blockchainBuf); err != nil {
 			return err
 		}
 	}
 	firstTransaction := s.offsetIndex
 	for i, tx := range block.Transactions {
-		binary.LittleEndian.PutUint64(offsetFull, s.blockchain.n)
+		binary.LittleEndian.PutUint64(offsetFull, s.blockchainLen)
 		if n, err := s.offsets.Write(offset); err != nil {
 			return err
 		} else if n != s.offsetLen {
@@ -301,7 +288,11 @@ func (s *Builder) Add(block *types.Block) error {
 			}
 		}
 		s.offsetIndex++
-		if err := block.Transactions[i].MarshalSia(s.blockchain); err != nil {
+		if err := block.Transactions[i].MarshalSia(&s.dataBuf); err != nil {
+			return err
+		}
+		s.blockchainLen += uint64(s.dataBuf.Len())
+		if _, err := s.dataBuf.WriteTo(s.blockchainBuf); err != nil {
 			return err
 		}
 	}
@@ -314,13 +305,16 @@ func (s *Builder) Add(block *types.Block) error {
 	} else if n != len(blockLoc) {
 		return io.ErrShortWrite
 	}
-	if s.blockchain.n > s.offsetEnd {
-		return fmt.Errorf("too large offset (%d > %d); increase offsetLen", s.blockchain.n, s.offsetEnd)
+	if s.blockchainLen > s.offsetEnd {
+		return fmt.Errorf("too large offset (%d > %d); increase offsetLen", s.blockchainLen, s.offsetEnd)
 	}
 	return nil
 }
 
 func (s *Builder) Close() error {
+	if err := s.blockchainBuf.Flush(); err != nil {
+		return err
+	}
 	if err := s.blockchain.Close(); err != nil {
 		return err
 	}
