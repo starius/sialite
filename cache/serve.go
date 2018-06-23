@@ -119,11 +119,17 @@ const (
 	TRANSACTION  = 1
 )
 
+const (
+	NO_COMPRESSION = 0
+	SNAPPY         = 1
+)
+
 type Item struct {
-	Data  []byte
-	Block int
-	Index int
-	Type  int
+	Data        []byte
+	Compression int
+	Block       int
+	Index       int
+	Type        int
 	// TODO: Merkle proof
 }
 
@@ -187,17 +193,19 @@ func (s *Server) GetItem(itemIndex int) (Item, error) {
 	payoutsStart, txsStart := s.getBlockLocation(blockIndex)
 	if itemIndex < txsStart {
 		return Item{
-			Data:  data,
-			Block: blockIndex,
-			Type:  MINER_PAYOUT,
-			Index: itemIndex - payoutsStart,
+			Data:        data,
+			Compression: SNAPPY,
+			Block:       blockIndex,
+			Type:        MINER_PAYOUT,
+			Index:       itemIndex - payoutsStart,
 		}, nil
 	} else {
 		return Item{
-			Data:  data,
-			Block: blockIndex,
-			Type:  TRANSACTION,
-			Index: itemIndex - txsStart,
+			Data:        data,
+			Compression: NO_COMPRESSION,
+			Block:       blockIndex,
+			Type:        TRANSACTION,
+			Index:       itemIndex - txsStart,
 		}, nil
 	}
 }

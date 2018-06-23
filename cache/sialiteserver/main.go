@@ -38,7 +38,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Not found.\n")
 		return
 	}
-	l := 8 + len(next) + 8 + len(history)*(8+8+8+8)
+	l := 8 + len(next) + 8 + len(history)*(8+8+8+8+8)
 	for _, item := range history {
 		l += len(item.Data)
 	}

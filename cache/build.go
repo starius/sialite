@@ -14,6 +14,7 @@ import (
 	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/NebulousLabs/Sia/encoding"
 	"github.com/NebulousLabs/Sia/types"
+	"github.com/golang/snappy"
 	"github.com/starius/sialite/emsort"
 	"github.com/starius/sialite/fastmap"
 )
@@ -38,6 +39,7 @@ type Builder struct {
 	blockchainBuf *bufio.Writer
 	blockchainLen uint64
 	dataBuf       bytes.Buffer
+	compressedBuf []byte
 
 	// Series of blockHeader.
 	headersFile    *os.File
@@ -291,8 +293,10 @@ func (s *Builder) Add(block *types.Block) error {
 		if err := block.Transactions[i].MarshalSia(&s.dataBuf); err != nil {
 			return err
 		}
-		s.blockchainLen += uint64(s.dataBuf.Len())
-		if _, err := s.dataBuf.WriteTo(s.blockchainBuf); err != nil {
+		s.compressedBuf = snappy.Encode(s.compressedBuf, s.dataBuf.Bytes())
+		s.dataBuf.Reset()
+		s.blockchainLen += uint64(len(s.compressedBuf))
+		if _, err := s.blockchainBuf.Write(s.compressedBuf); err != nil {
 			return err
 		}
 	}
