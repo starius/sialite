@@ -18,7 +18,7 @@ var (
 	s *cache.Server
 )
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func handleHistory(w http.ResponseWriter, r *http.Request) {
 	addressHex := r.URL.Query().Get("address")
 	var address types.UnlockHash
 	if err := address.LoadString(addressHex); err != nil {
@@ -60,6 +60,6 @@ func main() {
 		log.Fatalf("cache.NewServer: %v", err)
 	}
 	s = s1
-	http.HandleFunc("/v1/history", handler)
+	http.HandleFunc("/v1/history", handleHistory)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
