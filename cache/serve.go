@@ -195,11 +195,13 @@ func (s *Server) GetItem(itemIndex int) (Item, error) {
 		return payoutsStart > itemIndex
 	}) - 1
 	payoutsStart, txsStart, nleaves := s.getBlockLocation(blockIndex)
+	numMinerPayouts := txsStart - payoutsStart
 	item := Item{
-		Data:      data,
-		Block:     blockIndex,
-		NumLeaves: nleaves,
-		Index:     itemIndex - payoutsStart,
+		Data:            data,
+		Block:           blockIndex,
+		NumLeaves:       nleaves,
+		NumMinerPayouts: numMinerPayouts,
+		Index:           itemIndex - payoutsStart,
 	}
 	if itemIndex < txsStart {
 		item.Compression = NO_COMPRESSION
