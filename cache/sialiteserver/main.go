@@ -24,6 +24,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if err := address.LoadString(addressHex); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "address.LoadString(%q): %v.\n", addressHex, err)
+		log.Printf("address.LoadString(%q): %v.\n", addressHex, err)
 		return
 	}
 	addressBytes := address[:]
@@ -31,16 +32,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "GetHistory: %v.\n", err)
+		log.Printf("GetHistory: %v.\n", err)
 		return
 	}
 	if len(history) == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, "Not found.\n")
+		log.Printf("Not found.\n")
 		return
 	}
-	l := 8 + len(next) + 8 + len(history)*(8+8+8+8+8)
+	l := 8 + len(next) + 8 + len(history)*(8+8+8+8+8+8+8)
 	for _, item := range history {
-		l += len(item.Data)
+		l += len(item.Data) + len(item.MerkleProof)
 	}
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
 	w.WriteHeader(http.StatusOK)

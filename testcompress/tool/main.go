@@ -46,7 +46,7 @@ func main() {
 		} else if err != nil {
 			log.Fatalf("GetItem: %v.", err)
 		}
-		if item.Type == cache.MINER_PAYOUT {
+		if item.Index < item.NumMinerPayouts {
 			if len(item.Data) != 53 {
 				panic("len(item.Data) is " + string(item.Data))
 			}

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"io/ioutil"
 	"os"
@@ -35,11 +36,16 @@ type blockHeader struct {
 }
 
 type Builder struct {
-	blockchain    *os.File
-	blockchainBuf *bufio.Writer
-	blockchainLen uint64
-	dataBuf       bytes.Buffer
-	compressedBuf []byte
+	blockchain      *os.File
+	blockchainBuf   *bufio.Writer
+	blockchainLen   uint64
+	dataBuf         bytes.Buffer
+	compressedBuf   []byte
+	leavesHashes    *os.File
+	leavesHashesBuf *bufio.Writer
+
+	siaHash    hash.Hash
+	siaHashBuf []byte
 
 	// Series of blockHeader.
 	headersFile    *os.File
@@ -107,6 +113,11 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		return nil, fmt.Errorf("opening blockchain: %v", err)
 	}
 
+	leavesHashes, err := os.Create(path.Join(dir, "leavesHashes"))
+	if err != nil {
+		return nil, fmt.Errorf("opening leavesHashes: %v", err)
+	}
+
 	headersFile, err := os.Create(path.Join(dir, "headers"))
 	if err != nil {
 		return nil, fmt.Errorf("opening headers: %v", err)
@@ -163,8 +174,12 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	}
 
 	return &Builder{
-		blockchain:     blockchain,
-		blockchainBuf:  bufio.NewWriter(blockchain),
+		blockchain:      blockchain,
+		blockchainBuf:   bufio.NewWriter(blockchain),
+		leavesHashes:    leavesHashes,
+		leavesHashesBuf: bufio.NewWriter(leavesHashes),
+		siaHash:         crypto.NewHash(),
+
 		headersFile:    headersFile,
 		headersEncoder: headersEncoder,
 
@@ -227,6 +242,13 @@ func (s *Builder) Add(block *types.Block) error {
 		}
 		s.offsetIndex++
 		if err := mp.MarshalSia(&s.dataBuf); err != nil {
+			return err
+		}
+		s.siaHash.Reset()
+		_, _ = s.siaHash.Write([]byte{0x00})
+		_, _ = s.siaHash.Write(s.dataBuf.Bytes())
+		s.siaHashBuf = s.siaHash.Sum(s.siaHashBuf[:0])
+		if _, err := s.leavesHashesBuf.Write(s.siaHashBuf); err != nil {
 			return err
 		}
 		s.blockchainLen += uint64(s.dataBuf.Len())
@@ -293,6 +315,13 @@ func (s *Builder) Add(block *types.Block) error {
 		if err := block.Transactions[i].MarshalSia(&s.dataBuf); err != nil {
 			return err
 		}
+		s.siaHash.Reset()
+		_, _ = s.siaHash.Write([]byte{0x00})
+		_, _ = s.siaHash.Write(s.dataBuf.Bytes())
+		s.siaHashBuf = s.siaHash.Sum(s.siaHashBuf[:0])
+		if _, err := s.leavesHashesBuf.Write(s.siaHashBuf); err != nil {
+			return err
+		}
 		s.compressedBuf = snappy.Encode(s.compressedBuf, s.dataBuf.Bytes())
 		s.dataBuf.Reset()
 		s.blockchainLen += uint64(len(s.compressedBuf))
@@ -320,6 +349,12 @@ func (s *Builder) Close() error {
 		return err
 	}
 	if err := s.blockchain.Close(); err != nil {
+		return err
+	}
+	if err := s.leavesHashesBuf.Flush(); err != nil {
+		return err
+	}
+	if err := s.leavesHashes.Close(); err != nil {
 		return err
 	}
 	if err := s.headersFile.Close(); err != nil {

@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/NebulousLabs/Sia/crypto"
+	"github.com/NebulousLabs/merkletree"
 	"github.com/starius/sialite/fastmap"
 )
 
@@ -24,6 +25,7 @@ type Server struct {
 	Blockchain     []byte
 	Offsets        []byte
 	BlockLocations []byte
+	LeavesHashes   []byte
 
 	AddressesFastmapData     []byte
 	AddressesFastmapPrefixes []byte
@@ -125,12 +127,13 @@ const (
 )
 
 type Item struct {
-	Data        []byte
-	Compression int
-	Block       int
-	Index       int
-	Type        int
-	// TODO: Merkle proof
+	Data            []byte
+	Compression     int
+	Block           int
+	Index           int
+	NumLeaves       int
+	NumMinerPayouts int
+	MerkleProof     []byte
 }
 
 func (s *Server) GetHistory(address []byte, start string) (history []Item, next string, err error) {
@@ -187,36 +190,72 @@ func (s *Server) GetItem(itemIndex int) (Item, error) {
 	data := s.Blockchain[dataStart:dataEnd]
 	// Find the block.
 	blockIndex := sort.Search(s.nblocks, func(i int) bool {
-		payoutsStart, _ := s.getBlockLocation(i)
+		payoutsStart := s.getPayoutsStart(i)
 		return payoutsStart > itemIndex
 	}) - 1
-	payoutsStart, txsStart := s.getBlockLocation(blockIndex)
-	if itemIndex < txsStart {
-		return Item{
-			Data:        data,
-			Compression: NO_COMPRESSION,
-			Block:       blockIndex,
-			Type:        MINER_PAYOUT,
-			Index:       itemIndex - payoutsStart,
-		}, nil
-	} else {
-		return Item{
-			Data:        data,
-			Compression: SNAPPY,
-			Block:       blockIndex,
-			Type:        TRANSACTION,
-			Index:       itemIndex - txsStart,
-		}, nil
+	payoutsStart, txsStart, nleaves := s.getBlockLocation(blockIndex)
+	item := Item{
+		Data:      data,
+		Block:     blockIndex,
+		NumLeaves: nleaves,
+		Index:     itemIndex - payoutsStart,
 	}
+	if itemIndex < txsStart {
+		item.Compression = NO_COMPRESSION
+	} else {
+		item.Compression = SNAPPY
+	}
+	// Build MerkleProof.
+	hstart := payoutsStart * crypto.HashSize
+	hstop := hstart + nleaves*crypto.HashSize
+	leavesHashes := s.LeavesHashes[hstart:hstop]
+	tree := merkletree.NewCachedTree(crypto.NewHash(), 0)
+	if err := tree.SetIndex(uint64(item.Index)); err != nil {
+		return Item{}, fmt.Errorf("tree.SetIndex(%d): %v", item.Index, err)
+	}
+	for i := 0; i < nleaves; i++ {
+		start := i * crypto.HashSize
+		stop := start + crypto.HashSize
+		tree.Push(leavesHashes[start:stop])
+	}
+	_, proofSet, _, _ := tree.Prove(nil)
+	proof := make([]byte, 0, len(proofSet)*crypto.HashSize)
+	for _, h := range proofSet {
+		if len(h) != crypto.HashSize {
+			panic("len(h)=" + string(len(h)))
+		}
+		proof = append(proof, h...)
+	}
+	item.MerkleProof = proof
+	return item, nil
 }
 
-func (s *Server) getBlockLocation(index int) (int, int) {
+func (s *Server) getBlockLocation(index int) (int, int, int) {
 	var tmp [8]byte
 	tmpBytes := tmp[:]
-	p := index * (2 * s.offsetIndexLen)
-	copy(tmpBytes, s.BlockLocations[p:p+s.offsetIndexLen])
+	p1 := index * (2 * s.offsetIndexLen)
+	p2 := p1 + s.offsetIndexLen
+	p3 := p2 + s.offsetIndexLen
+	p4 := p3 + s.offsetIndexLen
+	copy(tmpBytes, s.BlockLocations[p1:p2])
 	payoutsStart := int(binary.LittleEndian.Uint64(tmpBytes))
-	copy(tmpBytes, s.BlockLocations[p+s.offsetIndexLen:p+2*s.offsetIndexLen])
+	copy(tmpBytes, s.BlockLocations[p2:p3])
 	txsStart := int(binary.LittleEndian.Uint64(tmpBytes))
-	return payoutsStart, txsStart
+	nextStart := s.nitems
+	if index != s.nblocks-1 {
+		copy(tmpBytes, s.BlockLocations[p3:p4])
+		nextStart = int(binary.LittleEndian.Uint64(tmpBytes))
+	}
+	nleaves := nextStart - payoutsStart
+	return payoutsStart, txsStart, nleaves
+}
+
+func (s *Server) getPayoutsStart(index int) int {
+	var tmp [8]byte
+	tmpBytes := tmp[:]
+	p1 := index * (2 * s.offsetIndexLen)
+	p2 := p1 + s.offsetIndexLen
+	copy(tmpBytes, s.BlockLocations[p1:p2])
+	payoutsStart := int(binary.LittleEndian.Uint64(tmpBytes))
+	return payoutsStart
 }
