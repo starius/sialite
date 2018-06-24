@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/NebulousLabs/Sia/encoding"
 	"github.com/NebulousLabs/Sia/types"
@@ -53,6 +55,13 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleHeaders(w http.ResponseWriter, r *http.Request) {
+	reader := bytes.NewReader(s.Headers)
+	modTime := time.Now() // FIXME: set to last block timestamp.
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeContent(w, r, "headers", modTime, reader)
+}
+
 func main() {
 	flag.Parse()
 	s1, err := cache.NewServer(*files)
@@ -61,5 +70,6 @@ func main() {
 	}
 	s = s1
 	http.HandleFunc("/v1/history", handleHistory)
+	http.HandleFunc("/v1/headers", handleHeaders)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }

@@ -26,6 +26,7 @@ type Server struct {
 	Offsets        []byte
 	BlockLocations []byte
 	LeavesHashes   []byte
+	Headers        []byte
 
 	AddressesFastmapData     []byte
 	AddressesFastmapPrefixes []byte
