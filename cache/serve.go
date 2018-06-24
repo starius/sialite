@@ -194,7 +194,7 @@ func (s *Server) GetItem(itemIndex int) (Item, error) {
 	if itemIndex < txsStart {
 		return Item{
 			Data:        data,
-			Compression: SNAPPY,
+			Compression: NO_COMPRESSION,
 			Block:       blockIndex,
 			Type:        MINER_PAYOUT,
 			Index:       itemIndex - payoutsStart,
@@ -202,7 +202,7 @@ func (s *Server) GetItem(itemIndex int) (Item, error) {
 	} else {
 		return Item{
 			Data:        data,
-			Compression: NO_COMPRESSION,
+			Compression: SNAPPY,
 			Block:       blockIndex,
 			Type:        TRANSACTION,
 			Index:       itemIndex - txsStart,
