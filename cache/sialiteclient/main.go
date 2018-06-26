@@ -46,8 +46,8 @@ func main() {
 		} else {
 			panic("unknown compression")
 		}
-		header := headers[item.Block*48 : (item.Block+1)*48]
-		merkleRoot := header[16:]
+		headerBytes := headers[item.Block*48 : (item.Block+1)*48]
+		merkleRoot := headerBytes[16:]
 		if !cache.VerifyProof(merkleRoot, data, item.MerkleProof, item.Index, item.NumLeaves) {
 			panic("bad proof")
 		}
