@@ -2,8 +2,13 @@ package cache
 
 import (
 	"github.com/NebulousLabs/Sia/crypto"
+	"github.com/NebulousLabs/Sia/types"
 	"github.com/NebulousLabs/merkletree"
 )
+
+func VerifyBlockHeader(header types.BlockHeader) (err error) {
+	return nil
+}
 
 func VerifyProof(merkleRoot, data, proof []byte, proofIndex int, numLeaves int) bool {
 	proofSet := [][]byte{data}

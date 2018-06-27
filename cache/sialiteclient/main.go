@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/NebulousLabs/Sia/encoding"
+	"github.com/NebulousLabs/Sia/types"
 	"github.com/golang/snappy"
 	"github.com/starius/sialite/cache"
 )
@@ -48,6 +49,15 @@ func main() {
 		}
 		headerBytes := headers[item.Block*48 : (item.Block+1)*48]
 		merkleRoot := headerBytes[16:]
+		var header types.BlockHeader
+		err = encoding.Unmarshal(headerBytes, &header)
+		if err != nil {
+			panic(err)
+		}
+		err = cache.VerifyBlockHeader(header)
+		if err != nil {
+			panic(err)
+		}
 		if !cache.VerifyProof(merkleRoot, data, item.MerkleProof, item.Index, item.NumLeaves) {
 			panic("bad proof")
 		}
