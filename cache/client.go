@@ -1,12 +1,21 @@
 package cache
 
 import (
+	"fmt"
+
 	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/NebulousLabs/merkletree"
 )
 
-func VerifyBlockHeader(header types.BlockHeader) (err error) {
+func VerifyBlockHeader(header types.BlockHeader) error {
+	// Check if the block is in the extreme future. We make a distinction between
+	// future and extreme future because there is an assumption that by the time
+	// the extreme future arrives, this block will no longer be a part of the
+	// longest fork because it will have been ignored by all of the miners.
+	if header.Timestamp > types.CurrentTimestamp() + types.ExtremeFutureThreshold {
+		return fmt.Errorf("Block header validation failed: ExtremeFutureTimestamp")
+	}
 	return nil
 }
 
