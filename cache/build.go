@@ -64,7 +64,13 @@ type Builder struct {
 	addresses    emsort.SortedWriter
 	addressestmp *os.File
 
-	buf, tmpBuf []byte
+	tmpBuf        []byte
+	itemOffset    []byte
+	addressLoc    []byte
+	addressPrefix []byte
+	blockLoc      []byte
+	offsetFull    []byte
+	offset        []byte
 
 	offsetEnd uint64
 
@@ -79,6 +85,13 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	if addressRecordSize > bufferSize {
 		bufferSize = addressRecordSize
 	}
+	buf := make([]byte, bufferSize)
+	offsetFull := buf[:8]
+	offset := buf[:offsetLen]
+	blockLoc := buf[:offsetIndexLen*2]
+	addressLoc := buf[:addressRecordSize]
+	addressPrefix := addressLoc[:addressPrefixLen]
+	itemOffset := addressLoc[addressPrefixLen:addressRecordSize]
 
 	if list, err := ioutil.ReadDir(dir); err != nil {
 		return nil, fmt.Errorf("ioutil.ReadDir(%q): %v", dir, err)
@@ -189,8 +202,13 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 
 		addressestmp: addressestmp,
 
-		buf:    make([]byte, bufferSize),
-		tmpBuf: make([]byte, 8),
+		tmpBuf:        make([]byte, 8),
+		itemOffset:    itemOffset,
+		addressLoc:    addressLoc,
+		addressPrefix: addressPrefix,
+		blockLoc:      blockLoc,
+		offsetFull:    offsetFull,
+		offset:        offset,
 
 		offsetEnd: uint64((1 << uint(8*offsetLen)) - 1),
 
@@ -199,6 +217,17 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		addressRecordSize: addressRecordSize,
 		addressPrefixLen:  addressPrefixLen,
 	}, nil
+}
+
+func (s *Builder) writeAddress(uh types.UnlockHash) error {
+	copy(s.addressPrefix, uh[:])
+	// This function assumes that index offset is already written to itemOffset.
+	if n, err := s.addresses.Write(s.addressLoc); err != nil {
+		return err
+	} else if n != s.addressRecordSize {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func (s *Builder) Add(block *types.Block) error {
@@ -210,34 +239,19 @@ func (s *Builder) Add(block *types.Block) error {
 	if err := s.headersEncoder.Encode(header); err != nil {
 		return err
 	}
-	offsetFull := s.buf[:8]
-	offset := s.buf[:s.offsetLen]
-	blockLoc := s.buf[:s.offsetIndexLen*2]
-	addressLoc := s.buf[:s.addressRecordSize]
-	addressPrefix := addressLoc[:s.addressPrefixLen]
-	locOfAddress := addressLoc[s.addressPrefixLen:s.addressRecordSize]
-	writeAddress := func(uh types.UnlockHash) error {
-		copy(addressPrefix, uh[:])
-		if n, err := s.addresses.Write(addressLoc); err != nil {
-			return err
-		} else if n != s.addressRecordSize {
-			return io.ErrShortWrite
-		}
-		return nil
-	}
 	firstMinerPayout := s.offsetIndex
 	// See Block.MarshalSia.
 	for _, mp := range block.MinerPayouts {
-		binary.LittleEndian.PutUint64(offsetFull, s.blockchainLen)
-		if n, err := s.offsets.Write(offset); err != nil {
+		binary.LittleEndian.PutUint64(s.offsetFull, s.blockchainLen)
+		if n, err := s.offsets.Write(s.offset); err != nil {
 			return err
 		} else if n != s.offsetLen {
 			return io.ErrShortWrite
 		}
 		wireOffsetIndex := s.offsetIndex + 1 // To avoid special 0 value on wire.
 		binary.LittleEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
-		copy(locOfAddress, s.tmpBuf)
-		if err := writeAddress(mp.UnlockHash); err != nil {
+		copy(s.itemOffset, s.tmpBuf)
+		if err := s.writeAddress(mp.UnlockHash); err != nil {
 			return err
 		}
 		s.offsetIndex++
@@ -258,55 +272,55 @@ func (s *Builder) Add(block *types.Block) error {
 	}
 	firstTransaction := s.offsetIndex
 	for i, tx := range block.Transactions {
-		binary.LittleEndian.PutUint64(offsetFull, s.blockchainLen)
-		if n, err := s.offsets.Write(offset); err != nil {
+		binary.LittleEndian.PutUint64(s.offsetFull, s.blockchainLen)
+		if n, err := s.offsets.Write(s.offset); err != nil {
 			return err
 		} else if n != s.offsetLen {
 			return io.ErrShortWrite
 		}
 		wireOffsetIndex := s.offsetIndex + 1 // To avoid special 0 value on wire.
 		binary.LittleEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
-		copy(locOfAddress, s.tmpBuf)
+		copy(s.itemOffset, s.tmpBuf)
 		for _, si := range tx.SiacoinInputs {
-			if err := writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
+			if err := s.writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
 				return err
 			}
 		}
 		for _, si := range tx.SiafundInputs {
-			if err := writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
+			if err := s.writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
 				return err
 			}
 		}
 		for _, so := range tx.SiacoinOutputs {
-			if err := writeAddress(so.UnlockHash); err != nil {
+			if err := s.writeAddress(so.UnlockHash); err != nil {
 				return err
 			}
 		}
 		for _, so := range tx.SiafundOutputs {
-			if err := writeAddress(so.UnlockHash); err != nil {
+			if err := s.writeAddress(so.UnlockHash); err != nil {
 				return err
 			}
 		}
 		for _, contract := range tx.FileContracts {
 			for _, so := range contract.ValidProofOutputs {
-				if err := writeAddress(so.UnlockHash); err != nil {
+				if err := s.writeAddress(so.UnlockHash); err != nil {
 					return err
 				}
 			}
 			for _, so := range contract.MissedProofOutputs {
-				if err := writeAddress(so.UnlockHash); err != nil {
+				if err := s.writeAddress(so.UnlockHash); err != nil {
 					return err
 				}
 			}
 		}
 		for _, rev := range tx.FileContractRevisions {
 			for _, so := range rev.NewValidProofOutputs {
-				if err := writeAddress(so.UnlockHash); err != nil {
+				if err := s.writeAddress(so.UnlockHash); err != nil {
 					return err
 				}
 			}
 			for _, so := range rev.NewMissedProofOutputs {
-				if err := writeAddress(so.UnlockHash); err != nil {
+				if err := s.writeAddress(so.UnlockHash); err != nil {
 					return err
 				}
 			}
@@ -330,12 +344,12 @@ func (s *Builder) Add(block *types.Block) error {
 		}
 	}
 	binary.LittleEndian.PutUint64(s.tmpBuf, firstMinerPayout)
-	copy(blockLoc[:s.offsetIndexLen], s.tmpBuf)
+	copy(s.blockLoc[:s.offsetIndexLen], s.tmpBuf)
 	binary.LittleEndian.PutUint64(s.tmpBuf, firstTransaction)
-	copy(blockLoc[s.offsetIndexLen:], s.tmpBuf)
-	if n, err := s.blockLocations.Write(blockLoc); err != nil {
+	copy(s.blockLoc[s.offsetIndexLen:], s.tmpBuf)
+	if n, err := s.blockLocations.Write(s.blockLoc); err != nil {
 		return err
-	} else if n != len(blockLoc) {
+	} else if n != len(s.blockLoc) {
 		return io.ErrShortWrite
 	}
 	if s.blockchainLen > s.offsetEnd {
