@@ -16,6 +16,13 @@ func VerifyBlockHeader(header types.BlockHeader) error {
 	if header.Timestamp > types.CurrentTimestamp() + types.ExtremeFutureThreshold {
 		return fmt.Errorf("Block header validation failed: ExtremeFutureTimestamp")
 	}
+
+	// Check if the block is in the near future, but too far to be acceptable.
+	// This is the last check because it's an expensive check, and not worth
+	// performing if the earlier checks failed.
+	if header.Timestamp > types.CurrentTimestamp() + types.FutureThreshold {
+		return fmt.Errorf("Block header validation failed: FutureTimestamp")
+	}
 	return nil
 }
 
