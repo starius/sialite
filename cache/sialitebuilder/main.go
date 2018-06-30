@@ -22,12 +22,16 @@ var (
 
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 
-	offsetLen               = flag.Int("offset_len", 8, "sizeof(offset in blockchain file)")
-	offsetIndexLen          = flag.Int("offset_index_len", 4, "sizeof(index in offsets file)")
-	addressPageLen          = flag.Int("address_page_len", 4096, "sizeof(page in addressesFastmapData)")
-	addressPrefixLen        = flag.Int("address_prefix_len", 16, "sizeof(prefix of address to store)")
-	addressFastmapPrefixLen = flag.Int("address_fastmap_prefix_len", 5, "sizeof(prefix of address to store in addressesFastmapPrefixes)")
-	addressOffsetLen        = flag.Int("address_offset_len", 4, "sizeof(offset in addressesIndices file)")
+	offsetLen                = flag.Int("offset_len", 8, "sizeof(offset in blockchain file)")
+	offsetIndexLen           = flag.Int("offset_index_len", 4, "sizeof(index in offsets file)")
+	addressPageLen           = flag.Int("address_page_len", 4096, "sizeof(page in addressesFastmapData)")
+	addressPrefixLen         = flag.Int("address_prefix_len", 16, "sizeof(prefix of address to store)")
+	addressFastmapPrefixLen  = flag.Int("address_fastmap_prefix_len", 5, "sizeof(prefix of address to store in addressesFastmapPrefixes)")
+	addressOffsetLen         = flag.Int("address_offset_len", 4, "sizeof(offset in addressesIndices file)")
+	contractPageLen          = flag.Int("contract_page_len", 4096, "sizeof(page in contractsFastmapData)")
+	contractPrefixLen        = flag.Int("contract_prefix_len", 16, "sizeof(prefix of contract to store)")
+	contractFastmapPrefixLen = flag.Int("contract_fastmap_prefix_len", 5, "sizeof(prefix of contract to store in contractsFastmapPrefixes)")
+	contractOffsetLen        = flag.Int("contract_offset_len", 4, "sizeof(offset in contractsIndices file)")
 )
 
 func main() {
@@ -41,7 +45,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	ctx := context.Background()
-	b, err := cache.NewBuilder(*files, *memLimit, *offsetLen, *offsetIndexLen, *addressPageLen, *addressPrefixLen, *addressFastmapPrefixLen, *addressOffsetLen)
+	b, err := cache.NewBuilder(*files, *memLimit, *offsetLen, *offsetIndexLen, *addressPageLen, *addressPrefixLen, *addressFastmapPrefixLen, *addressOffsetLen, *contractPageLen, *contractPrefixLen, *contractFastmapPrefixLen, *contractOffsetLen)
 	if err != nil {
 		log.Fatalf("cache.NewBuilder: %v", err)
 	}

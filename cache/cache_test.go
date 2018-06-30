@@ -90,31 +90,43 @@ func TestOnRealBlocks(t *testing.T) {
 	}
 
 	cases := []struct {
-		memLimit                int
-		offsetLen               int
-		offsetIndexLen          int
-		addressPageLen          int
-		addressPrefixLen        int
-		addressFastmapPrefixLen int
-		addressOffsetLen        int
+		memLimit                 int
+		offsetLen                int
+		offsetIndexLen           int
+		addressPageLen           int
+		addressPrefixLen         int
+		addressFastmapPrefixLen  int
+		addressOffsetLen         int
+		contractPageLen          int
+		contractPrefixLen        int
+		contractFastmapPrefixLen int
+		contractOffsetLen        int
 	}{
 		{
-			memLimit:                1,
-			offsetLen:               8,
-			offsetIndexLen:          4,
-			addressPageLen:          4096,
-			addressPrefixLen:        16,
-			addressFastmapPrefixLen: 5,
-			addressOffsetLen:        4,
+			memLimit:                 1,
+			offsetLen:                8,
+			offsetIndexLen:           4,
+			addressPageLen:           4096,
+			addressPrefixLen:         16,
+			addressFastmapPrefixLen:  5,
+			addressOffsetLen:         4,
+			contractPageLen:          4096,
+			contractPrefixLen:        16,
+			contractFastmapPrefixLen: 5,
+			contractOffsetLen:        4,
 		},
 		{
-			memLimit:                1,
-			offsetLen:               7,
-			offsetIndexLen:          2,
-			addressPageLen:          1500,
-			addressPrefixLen:        32,
-			addressFastmapPrefixLen: 3,
-			addressOffsetLen:        5,
+			memLimit:                 1,
+			offsetLen:                7,
+			offsetIndexLen:           2,
+			addressPageLen:           1500,
+			addressPrefixLen:         32,
+			addressFastmapPrefixLen:  3,
+			addressOffsetLen:         5,
+			contractPageLen:          2000,
+			contractPrefixLen:        31,
+			contractFastmapPrefixLen: 4,
+			contractOffsetLen:        4,
 		},
 	}
 
@@ -129,7 +141,7 @@ next:
 		if err != nil {
 			t.Fatalf("ioutil.TempDir: %v", err)
 		}
-		b, err := NewBuilder(tmpDir, tc.memLimit, tc.offsetLen, tc.offsetIndexLen, tc.addressPageLen, tc.addressPrefixLen, tc.addressFastmapPrefixLen, tc.addressOffsetLen)
+		b, err := NewBuilder(tmpDir, tc.memLimit, tc.offsetLen, tc.offsetIndexLen, tc.addressPageLen, tc.addressPrefixLen, tc.addressFastmapPrefixLen, tc.addressOffsetLen, tc.contractPageLen, tc.contractPrefixLen, tc.contractFastmapPrefixLen, tc.contractOffsetLen)
 		if err != nil {
 			t.Errorf("NewBuilder: %v", err)
 			continue next
@@ -177,6 +189,7 @@ next:
 				continue next2
 			}
 		}
+		// TODO check contracts.
 		if err := s.Close(); err != nil {
 			t.Errorf("s.Close: %v", err)
 			continue next

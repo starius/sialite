@@ -21,12 +21,18 @@ import (
 )
 
 type parameters struct {
-	OffsetLen               int
-	OffsetIndexLen          int
+	OffsetLen      int
+	OffsetIndexLen int
+
 	AddressPageLen          int
 	AddressPrefixLen        int
 	AddressFastmapPrefixLen int
 	AddressOffsetLen        int
+
+	ContractPageLen          int
+	ContractPrefixLen        int
+	ContractFastmapPrefixLen int
+	ContractOffsetLen        int
 }
 
 type blockHeader struct {
@@ -64,35 +70,49 @@ type Builder struct {
 	addresses    emsort.SortedWriter
 	addressestmp *os.File
 
-	tmpBuf        []byte
-	itemOffset    []byte
-	addressLoc    []byte
-	addressPrefix []byte
-	blockLoc      []byte
-	offsetFull    []byte
-	offset        []byte
+	// unlockhash(contractPrefixLen bytes) + contractOffsetLen byte index in offsets
+	contracts    emsort.SortedWriter
+	contractstmp *os.File
+
+	tmpBuf         []byte
+	itemOffset     []byte
+	addressLoc     []byte
+	addressPrefix  []byte
+	contractLoc    []byte
+	contractPrefix []byte
+	blockLoc       []byte
+	offsetFull     []byte
+	offset         []byte
 
 	offsetEnd uint64
 
-	offsetLen, offsetIndexLen           int
-	addressRecordSize, addressPrefixLen int
+	offsetLen, offsetIndexLen             int
+	addressRecordSize, addressPrefixLen   int
+	contractRecordSize, contractPrefixLen int
 }
 
-func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen, addressPrefixLen, addressFastmapPrefixLen, addressOffsetLen int) (*Builder, error) {
+func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen, addressPrefixLen, addressFastmapPrefixLen, addressOffsetLen, contractPageLen, contractPrefixLen, contractFastmapPrefixLen, contractOffsetLen int) (*Builder, error) {
 
-	bufferSize := 8 // Max of used buffers.
 	addressRecordSize := addressPrefixLen + offsetIndexLen
-	if addressRecordSize > bufferSize {
-		bufferSize = addressRecordSize
+	contractRecordSize := contractPrefixLen + offsetIndexLen
+	maxRecordSize := addressRecordSize
+	if contractRecordSize > maxRecordSize {
+		maxRecordSize = contractRecordSize
+	}
+	bufferSize := 8 // Max of used buffers.
+	if maxRecordSize > bufferSize {
+		bufferSize = maxRecordSize
 	}
 	buf := make([]byte, bufferSize)
 	offsetFull := buf[:8]
 	offset := buf[:offsetLen]
 	blockLoc := buf[:offsetIndexLen*2]
-	addressLoc := buf[:addressRecordSize]
+	record := buf[:maxRecordSize]
+	itemOffset := record[len(record)-offsetIndexLen:]
+	addressLoc := record[len(record)-addressRecordSize:]
 	addressPrefix := addressLoc[:addressPrefixLen]
-	itemOffset := addressLoc[addressPrefixLen:addressRecordSize]
-
+	contractLoc := record[len(record)-contractRecordSize:]
+	contractPrefix := contractLoc[:contractPrefixLen]
 	if list, err := ioutil.ReadDir(dir); err != nil {
 		return nil, fmt.Errorf("ioutil.ReadDir(%q): %v", dir, err)
 	} else if len(list) != 0 {
@@ -100,12 +120,16 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	}
 
 	p := parameters{
-		OffsetLen:               offsetLen,
-		OffsetIndexLen:          offsetIndexLen,
-		AddressPageLen:          addressPageLen,
-		AddressPrefixLen:        addressPrefixLen,
-		AddressFastmapPrefixLen: addressFastmapPrefixLen,
-		AddressOffsetLen:        addressOffsetLen,
+		OffsetLen:                offsetLen,
+		OffsetIndexLen:           offsetIndexLen,
+		AddressPageLen:           addressPageLen,
+		AddressPrefixLen:         addressPrefixLen,
+		AddressFastmapPrefixLen:  addressFastmapPrefixLen,
+		AddressOffsetLen:         addressOffsetLen,
+		ContractPageLen:          contractPageLen,
+		ContractPrefixLen:        contractPrefixLen,
+		ContractFastmapPrefixLen: contractFastmapPrefixLen,
+		ContractOffsetLen:        contractOffsetLen,
 	}
 
 	parametersJson, err := os.Create(path.Join(dir, "parameters.json"))
@@ -155,29 +179,58 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	if err != nil {
 		return nil, fmt.Errorf("opening addressesFastmapPrefixes: %v", err)
 	}
-
 	addressesIndices, err := os.Create(path.Join(dir, "addressesIndices"))
 	if err != nil {
 		return nil, fmt.Errorf("opening addressesIndices: %v", err)
 	}
 
-	var inliner fastmap.Inliner = fastmap.NoInliner{}
-	containerLen := offsetIndexLen
-	if addressOffsetLen == offsetIndexLen {
-		inliner = fastmap.NewFFOOInliner(offsetIndexLen)
-		containerLen = 2 * offsetIndexLen
+	contractsFastmapData, err := os.Create(path.Join(dir, "contractsFastmapData"))
+	if err != nil {
+		return nil, fmt.Errorf("opening contractsFastmapData: %v", err)
+	}
+	contractsFastmapPrefixes, err := os.Create(path.Join(dir, "contractsFastmapPrefixes"))
+	if err != nil {
+		return nil, fmt.Errorf("opening contractsFastmapPrefixes: %v", err)
+	}
+	contractsIndices, err := os.Create(path.Join(dir, "contractsIndices"))
+	if err != nil {
+		return nil, fmt.Errorf("opening contractsIndices: %v", err)
 	}
 
-	addressesMultiMapWriter, err := fastmap.NewMultiMapWriter(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, containerLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices, inliner)
+	var addressInliner fastmap.Inliner = fastmap.NoInliner{}
+	addressContainerLen := offsetIndexLen
+	if addressOffsetLen == offsetIndexLen {
+		addressInliner = fastmap.NewFFOOInliner(offsetIndexLen)
+		addressContainerLen = 2 * offsetIndexLen
+	}
+	addressesMultiMapWriter, err := fastmap.NewMultiMapWriter(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, addressContainerLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices, addressInliner)
 	if err != nil {
 		return nil, fmt.Errorf("fastmap.NewMultiMapWriter: %v", err)
 	}
-
 	addressestmp, err := os.Create(path.Join(dir, "addresses.tmp"))
 	if err != nil {
 		return nil, fmt.Errorf("opening addresses.tmp: %v", err)
 	}
 	addresses, err := emsort.New(addressesMultiMapWriter, addressRecordSize, emsort.BytesLess, memLimit, addressestmp)
+	if err != nil {
+		return nil, fmt.Errorf("emsort.New: %v", err)
+	}
+
+	var contractInliner fastmap.Inliner = fastmap.NoInliner{}
+	contractContainerLen := offsetIndexLen
+	if contractOffsetLen == offsetIndexLen {
+		contractInliner = fastmap.NewFFOOInliner(offsetIndexLen)
+		contractContainerLen = 2 * offsetIndexLen
+	}
+	contractsMultiMapWriter, err := fastmap.NewMultiMapWriter(contractPageLen, contractPrefixLen, offsetIndexLen, contractFastmapPrefixLen, contractOffsetLen, contractContainerLen, contractsFastmapData, contractsFastmapPrefixes, contractsIndices, contractInliner)
+	if err != nil {
+		return nil, fmt.Errorf("fastmap.NewMultiMapWriter: %v", err)
+	}
+	contractstmp, err := os.Create(path.Join(dir, "contracts.tmp"))
+	if err != nil {
+		return nil, fmt.Errorf("opening contracts.tmp: %v", err)
+	}
+	contracts, err := emsort.New(contractsMultiMapWriter, contractRecordSize, emsort.BytesLess, memLimit, contractstmp)
 	if err != nil {
 		return nil, fmt.Errorf("emsort.New: %v", err)
 	}
@@ -199,23 +252,29 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		offsets:        offsets,
 		blockLocations: blockLocations,
 		addresses:      addresses,
+		contracts:      contracts,
 
 		addressestmp: addressestmp,
+		contractstmp: contractstmp,
 
-		tmpBuf:        make([]byte, 8),
-		itemOffset:    itemOffset,
-		addressLoc:    addressLoc,
-		addressPrefix: addressPrefix,
-		blockLoc:      blockLoc,
-		offsetFull:    offsetFull,
-		offset:        offset,
+		tmpBuf:         make([]byte, 8),
+		itemOffset:     itemOffset,
+		addressLoc:     addressLoc,
+		addressPrefix:  addressPrefix,
+		contractLoc:    contractLoc,
+		contractPrefix: contractPrefix,
+		blockLoc:       blockLoc,
+		offsetFull:     offsetFull,
+		offset:         offset,
 
 		offsetEnd: uint64((1 << uint(8*offsetLen)) - 1),
 
-		offsetLen:         offsetLen,
-		offsetIndexLen:    offsetIndexLen,
-		addressRecordSize: addressRecordSize,
-		addressPrefixLen:  addressPrefixLen,
+		offsetLen:          offsetLen,
+		offsetIndexLen:     offsetIndexLen,
+		addressRecordSize:  addressRecordSize,
+		addressPrefixLen:   addressPrefixLen,
+		contractRecordSize: contractRecordSize,
+		contractPrefixLen:  contractPrefixLen,
 	}, nil
 }
 
@@ -225,6 +284,16 @@ func (s *Builder) writeAddress(uh types.UnlockHash) error {
 	if n, err := s.addresses.Write(s.addressLoc); err != nil {
 		return err
 	} else if n != s.addressRecordSize {
+		return io.ErrShortWrite
+	}
+	return nil
+}
+
+func (s *Builder) writeContract(id types.FileContractID) error {
+	copy(s.contractPrefix, id[:])
+	if n, err := s.contracts.Write(s.contractLoc); err != nil {
+		return err
+	} else if n != s.contractRecordSize {
 		return io.ErrShortWrite
 	}
 	return nil
@@ -301,7 +370,10 @@ func (s *Builder) Add(block *types.Block) error {
 				return err
 			}
 		}
-		for _, contract := range tx.FileContracts {
+		for j, contract := range tx.FileContracts {
+			if err := s.writeContract(tx.FileContractID(uint64(j))); err != nil {
+				return err
+			}
 			for _, so := range contract.ValidProofOutputs {
 				if err := s.writeAddress(so.UnlockHash); err != nil {
 					return err
@@ -314,6 +386,9 @@ func (s *Builder) Add(block *types.Block) error {
 			}
 		}
 		for _, rev := range tx.FileContractRevisions {
+			if err := s.writeContract(rev.ParentID); err != nil {
+				return err
+			}
 			for _, so := range rev.NewValidProofOutputs {
 				if err := s.writeAddress(so.UnlockHash); err != nil {
 					return err
@@ -323,6 +398,11 @@ func (s *Builder) Add(block *types.Block) error {
 				if err := s.writeAddress(so.UnlockHash); err != nil {
 					return err
 				}
+			}
+		}
+		for _, proof := range tx.StorageProofs {
+			if err := s.writeContract(proof.ParentID); err != nil {
+				return err
 			}
 		}
 		s.offsetIndex++
@@ -387,6 +467,15 @@ func (s *Builder) Close() error {
 		return err
 	}
 	if err := os.Remove(s.addressestmp.Name()); err != nil {
+		return err
+	}
+	if err := s.contracts.Close(); err != nil {
+		return err
+	}
+	if err := s.contractstmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(s.contractstmp.Name()); err != nil {
 		return err
 	}
 	return nil
