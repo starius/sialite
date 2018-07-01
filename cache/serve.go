@@ -78,6 +78,9 @@ func NewServer(dir string) (*Server, error) {
 			if err != nil {
 				return nil, err
 			}
+			if stat.Size() == 0 {
+				continue
+			}
 			buf, err := syscall.Mmap(int(f.Fd()), 0, int(stat.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
 			if err != nil {
 				return nil, err
@@ -126,6 +129,9 @@ func (s *Server) Close() error {
 		ft := st.Field(i)
 		if ft.Type == reflect.TypeOf([]byte{}) {
 			buf := v.Field(i).Interface().([]byte)
+			if buf == nil {
+				continue
+			}
 			if err := syscall.Munmap(buf); err != nil {
 				return err
 			}
