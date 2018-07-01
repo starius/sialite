@@ -182,3 +182,29 @@ func TestMultiMapFFOORefectsFFAnd00inValues(t *testing.T) {
 		}
 	}
 }
+
+func TestMultumapEmpty(t *testing.T) {
+	var data, prefixes, values bytes.Buffer
+	w, err := NewMultiMapWriter(4096, 4, 4, 4, 4, 2*4, &data, &prefixes, &values, NewFFOOInliner(4))
+	if err != nil {
+		t.Fatalf("NewMapWriter: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+	if data.Len() != 0 || prefixes.Len() != 0 || values.Len() != 0 {
+		t.Errorf("data.Len() = %d; prefixes.Len() = %d; values.Len() = %d", data.Len(), prefixes.Len(), values.Len())
+	}
+	// Open the map.
+	m, err := OpenMultiMap(4096, 4, 4, 4, 2*4, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(4))
+	if err != nil {
+		t.Errorf("OpenMap: %v", err)
+	}
+	value, err := m.Lookup([]byte("0123"))
+	if err != nil {
+		t.Errorf("Lookup: %v", err)
+	}
+	if value != nil {
+		t.Errorf("expected to get 'not found', got %v", value)
+	}
+}

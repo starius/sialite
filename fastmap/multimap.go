@@ -130,6 +130,9 @@ func NewMultiMapWriter(pageLen, keyLen, valueLen, prefixLen, offsetLen, containe
 }
 
 func (u *MultiMapWriter) dump() error {
+	if len(u.batch) == 0 {
+		return nil
+	}
 	// Try to inline.
 	binary.LittleEndian.PutUint64(u.fullOffsetBytes, u.offset)
 	isInlined, err := u.inliner.Inline(u.container, u.batch, u.offsetBytes)
