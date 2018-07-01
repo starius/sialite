@@ -19,5 +19,5 @@ function request()
     r = math.random(0, n - 1)
     addresses:seek("set", r * 77)
     address = addresses:read(76)
-    return wrk.format(nil, '/v1/history?address=' .. address)
+    return wrk.format(nil, '/v1/address-history?address=' .. address)
 end

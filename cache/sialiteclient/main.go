@@ -27,7 +27,7 @@ func main() {
 		panic(err)
 	}
 	respHeaders.Body.Close()
-	respHistory, err := http.Get("http://" + *server + "/v1/history?address=" + *address)
+	respHistory, err := http.Get("http://" + *server + "/v1/address-history?address=" + *address)
 	if err != nil {
 		panic(err)
 	}

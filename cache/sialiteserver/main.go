@@ -69,7 +69,7 @@ func main() {
 		log.Fatalf("cache.NewServer: %v", err)
 	}
 	s = s1
-	http.HandleFunc("/v1/history", handleHistory)
+	http.HandleFunc("/v1/address-history", handleHistory)
 	http.HandleFunc("/v1/headers", handleHeaders)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
