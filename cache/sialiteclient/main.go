@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/NebulousLabs/Sia/encoding"
-	"github.com/golang/snappy"
 	"github.com/starius/sialite/cache"
 )
 
@@ -38,13 +37,9 @@ func main() {
 	}
 	respHistory.Body.Close()
 	for _, item := range history {
-		var data []byte
-		if item.Compression == cache.NO_COMPRESSION {
-			data = item.Data
-		} else if item.Compression == cache.SNAPPY {
-			data, err = snappy.Decode(nil, item.Data)
-		} else {
-			panic("unknown compression")
+		data, err := item.SourceData(nil)
+		if err != nil {
+			panic(err)
 		}
 		header := headers[item.Block*48 : (item.Block+1)*48]
 		merkleRoot := header[16:]

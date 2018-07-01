@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/golang/snappy"
 	"github.com/starius/sialite/cache"
 	"github.com/starius/sialite/testcompress"
 )
@@ -54,7 +53,7 @@ func main() {
 			continue
 		}
 		n++
-		data, err := snappy.Decode(data, item.Data)
+		data, err = item.SourceData(data)
 		if err != nil {
 			panic(err)
 		}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/NebulousLabs/merkletree"
+	"github.com/golang/snappy"
 	"github.com/starius/sialite/fastmap"
 )
 
@@ -160,6 +161,16 @@ type Item struct {
 	MerkleProof     []byte
 }
 
+func (i *Item) SourceData(dst []byte) ([]byte, error) {
+	if i.Compression == NO_COMPRESSION {
+		return i.Data, nil
+	} else if i.Compression == SNAPPY {
+		return snappy.Decode(dst, i.Data)
+	} else {
+		return nil, ErrUnknownCompression
+	}
+}
+
 func (s *Server) AddressHistory(address []byte, start string) (history []Item, next string, err error) {
 	if len(address) != crypto.HashSize {
 		return nil, "", fmt.Errorf("size of address: want %d, got %d", crypto.HashSize, len(address))
@@ -206,7 +217,8 @@ func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (h
 }
 
 var (
-	ErrTooLargeIndex = fmt.Errorf("Error in database: too large item index")
+	ErrTooLargeIndex      = fmt.Errorf("Error in database: too large item index")
+	ErrUnknownCompression = fmt.Errorf("unknown compression")
 )
 
 func (s *Server) GetItem(itemIndex int) (Item, error) {
