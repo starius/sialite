@@ -168,24 +168,24 @@ next:
 				t.Errorf("hex.DecodeString(%s): %v", address, err)
 				continue next2
 			}
-			history, _, err := s.GetHistory(addressBytes[:32], "")
+			history, _, err := s.AddressHistory(addressBytes[:32], "")
 			if err != nil {
-				t.Errorf("s.GetHistory(%s): %v", address, err)
+				t.Errorf("s.AddressHistory(%s): %v", address, err)
 				continue next2
 			}
 			if len(history) == 0 {
-				t.Errorf("s.GetHistory(%s): returned nothing", address)
+				t.Errorf("s.AddressHistory(%s): returned nothing", address)
 				continue next2
 			}
 			// Change the first byte and make sure nothing is found.
 			addressBytes[0] = ^addressBytes[0]
-			history, _, err = s.GetHistory(addressBytes[:32], "")
+			history, _, err = s.AddressHistory(addressBytes[:32], "")
 			if err != nil {
-				t.Errorf("s.GetHistory(%s): %v", hex.EncodeToString(addressBytes), err)
+				t.Errorf("s.AddressHistory(%s): %v", hex.EncodeToString(addressBytes), err)
 				continue next2
 			}
 			if len(history) != 0 {
-				t.Errorf("s.GetHistory(%s): returned something", hex.EncodeToString(addressBytes))
+				t.Errorf("s.AddressHistory(%s): returned something", hex.EncodeToString(addressBytes))
 				continue next2
 			}
 		}

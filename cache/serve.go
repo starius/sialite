@@ -137,7 +137,7 @@ type Item struct {
 	MerkleProof     []byte
 }
 
-func (s *Server) GetHistory(address []byte, start string) (history []Item, next string, err error) {
+func (s *Server) AddressHistory(address []byte, start string) (history []Item, next string, err error) {
 	if len(address) != crypto.HashSize {
 		return nil, "", fmt.Errorf("size of address: want %d, got %d", crypto.HashSize, len(address))
 	}

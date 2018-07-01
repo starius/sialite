@@ -30,11 +30,11 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addressBytes := address[:]
-	history, next, err := s.GetHistory(addressBytes, "")
+	history, next, err := s.AddressHistory(addressBytes, "")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "GetHistory: %v.\n", err)
-		log.Printf("GetHistory: %v.\n", err)
+		fmt.Fprintf(w, "AddressHistory: %v.\n", err)
+		log.Printf("AddressHistory: %v.\n", err)
 		return
 	}
 	if len(history) == 0 {
