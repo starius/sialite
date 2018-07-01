@@ -33,9 +33,15 @@ type Server struct {
 	AddressesIndices         []byte
 	addressMap               *fastmap.MultiMap
 
-	offsetLen        int
-	offsetIndexLen   int
-	addressPrefixLen int
+	ContractsFastmapData     []byte
+	ContractsFastmapPrefixes []byte
+	ContractsIndices         []byte
+	contractMap              *fastmap.MultiMap
+
+	offsetLen         int
+	offsetIndexLen    int
+	addressPrefixLen  int
+	contractPrefixLen int
 
 	nblocks, nitems int
 }
@@ -79,17 +85,28 @@ func NewServer(dir string) (*Server, error) {
 			v.Field(i).SetBytes(buf)
 		}
 	}
-	var uninliner fastmap.Uninliner = fastmap.NoUninliner{}
-	containerLen := par.OffsetIndexLen
+	var addressUninliner fastmap.Uninliner = fastmap.NoUninliner{}
+	addressContainerLen := par.OffsetIndexLen
 	if par.AddressOffsetLen == par.OffsetIndexLen {
-		uninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
-		containerLen = 2 * par.OffsetIndexLen
+		addressUninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
+		addressContainerLen = 2 * par.OffsetIndexLen
 	}
-	addressMap, err := fastmap.OpenMultiMap(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, containerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, uninliner)
+	addressMap, err := fastmap.OpenMultiMap(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, addressContainerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, addressUninliner)
 	if err != nil {
 		return nil, err
 	}
 	s.addressMap = addressMap
+	var contractUninliner fastmap.Uninliner = fastmap.NoUninliner{}
+	contractContainerLen := par.OffsetIndexLen
+	if par.ContractOffsetLen == par.OffsetIndexLen {
+		contractUninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
+		contractContainerLen = 2 * par.OffsetIndexLen
+	}
+	contractMap, err := fastmap.OpenMultiMap(par.ContractPageLen, par.ContractPrefixLen, par.OffsetIndexLen, par.ContractOffsetLen, contractContainerLen, s.ContractsFastmapData, s.ContractsFastmapPrefixes, s.ContractsIndices, contractUninliner)
+	if err != nil {
+		return nil, err
+	}
+	s.contractMap = contractMap
 	s.nblocks = len(s.BlockLocations) / (2 * par.OffsetIndexLen)
 	if s.nblocks*(2*par.OffsetIndexLen) != len(s.BlockLocations) {
 		return nil, fmt.Errorf("Bad length of blockLocations")
@@ -143,6 +160,14 @@ func (s *Server) AddressHistory(address []byte, start string) (history []Item, n
 	}
 	addressPrefix := address[:s.addressPrefixLen]
 	return s.getHistory(addressPrefix, s.addressMap, start)
+}
+
+func (s *Server) ContractHistory(contract []byte, start string) (history []Item, next string, err error) {
+	if len(contract) != crypto.HashSize {
+		return nil, "", fmt.Errorf("size of contract ID: want %d, got %d", crypto.HashSize, len(contract))
+	}
+	contractPrefix := contract[:s.contractPrefixLen]
+	return s.getHistory(contractPrefix, s.contractMap, start)
 }
 
 func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (history []Item, next string, err error) {

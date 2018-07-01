@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/NebulousLabs/Sia/encoding"
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/starius/sialite/cache"
@@ -20,7 +21,15 @@ var (
 	s *cache.Server
 )
 
-func handleHistory(w http.ResponseWriter, r *http.Request) {
+func encodingLen(history []cache.Item, next string) int {
+	l := 8 + len(next) + 8 + len(history)*(8+8+8+8+8+8+8)
+	for _, item := range history {
+		l += len(item.Data) + len(item.MerkleProof)
+	}
+	return l
+}
+
+func handleAddressHistory(w http.ResponseWriter, r *http.Request) {
 	addressHex := r.URL.Query().Get("address")
 	var address types.UnlockHash
 	if err := address.LoadString(addressHex); err != nil {
@@ -43,10 +52,39 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Not found.\n")
 		return
 	}
-	l := 8 + len(next) + 8 + len(history)*(8+8+8+8+8+8+8)
-	for _, item := range history {
-		l += len(item.Data) + len(item.MerkleProof)
+	l := encodingLen(history, next)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
+	w.WriteHeader(http.StatusOK)
+	e := encoding.NewEncoder(w)
+	if err := e.EncodeAll(next, history); err != nil {
+		return
 	}
+}
+
+func handleContractHistory(w http.ResponseWriter, r *http.Request) {
+	contractHex := r.URL.Query().Get("contract")
+	var id crypto.Hash
+	if err := id.LoadString(contractHex); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "LoadString(%q): %v.\n", contractHex, err)
+		log.Printf("LoadString(%q): %v.\n", contractHex, err)
+		return
+	}
+	contractBytes := id[:]
+	history, next, err := s.ContractHistory(contractBytes, "")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "ContractHistory: %v.\n", err)
+		log.Printf("ContractHistory: %v.\n", err)
+		return
+	}
+	if len(history) == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "Not found.\n")
+		log.Printf("Not found.\n")
+		return
+	}
+	l := encodingLen(history, next)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
 	w.WriteHeader(http.StatusOK)
 	e := encoding.NewEncoder(w)
@@ -69,7 +107,8 @@ func main() {
 		log.Fatalf("cache.NewServer: %v", err)
 	}
 	s = s1
-	http.HandleFunc("/v1/address-history", handleHistory)
+	http.HandleFunc("/v1/address-history", handleAddressHistory)
+	http.HandleFunc("/v1/contract-history", handleContractHistory)
 	http.HandleFunc("/v1/headers", handleHeaders)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
