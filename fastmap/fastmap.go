@@ -168,9 +168,12 @@ func OpenMap(pageLen, keyLen, valueLen int, data, prefixes []byte) (*Map, error)
 	if npages*pageLen != len(data) {
 		return nil, fmt.Errorf("data length is not divided by pageLen")
 	}
-	prefixLen := len(prefixes) / npages
-	if npages*prefixLen != len(prefixes) {
-		return nil, fmt.Errorf("prefixes length is not divided by the number of pages")
+	var prefixLen int
+	if npages != 0 {
+		prefixLen = len(prefixes) / npages
+		if npages*prefixLen != len(prefixes) {
+			return nil, fmt.Errorf("prefixes length is not divided by the number of pages")
+		}
 	}
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen

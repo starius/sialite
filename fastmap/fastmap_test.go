@@ -176,3 +176,29 @@ func TestFastmapRejectsDuplicateKeys(t *testing.T) {
 		t.Errorf("Write(): want an error because keys are duplicates")
 	}
 }
+
+func TestFastmapEmpty(t *testing.T) {
+	var data, prefixes bytes.Buffer
+	w, err := NewMapWriter(4096, 10, 10, 10, &data, &prefixes)
+	if err != nil {
+		t.Fatalf("NewMapWriter: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+	if data.Len() != 0 || prefixes.Len() != 0 {
+		t.Errorf("data.Len() = %d; prefixes.Len() = %d", data.Len(), prefixes.Len())
+	}
+	// Check the map.
+	m, err := OpenMap(4096, 10, 10, data.Bytes(), prefixes.Bytes())
+	if err != nil {
+		t.Errorf("OpenMap: %v", err)
+	}
+	value, err := m.Lookup([]byte("0123456789"))
+	if err != nil {
+		t.Errorf("Lookup: %v", err)
+	}
+	if value != nil {
+		t.Errorf("expected to get 'not found', got %v", value)
+	}
+}
