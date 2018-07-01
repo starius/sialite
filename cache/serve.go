@@ -142,7 +142,11 @@ func (s *Server) AddressHistory(address []byte, start string) (history []Item, n
 		return nil, "", fmt.Errorf("size of address: want %d, got %d", crypto.HashSize, len(address))
 	}
 	addressPrefix := address[:s.addressPrefixLen]
-	values, err := s.addressMap.Lookup(addressPrefix)
+	return s.getHistory(addressPrefix, s.addressMap, start)
+}
+
+func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (history []Item, next string, err error) {
+	values, err := m.Lookup(prefix)
 	if err != nil || values == nil {
 		return nil, "", err
 	}
