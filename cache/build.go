@@ -86,9 +86,9 @@ type Builder struct {
 
 	offsetEnd uint64
 
-	offsetLen, offsetIndexLen             int
-	addressRecordSize, addressPrefixLen   int
-	contractRecordSize, contractPrefixLen int
+	offsetLen, offsetIndexLen int
+	addressRecordSize         int
+	contractRecordSize        int
 }
 
 func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen, addressPrefixLen, addressFastmapPrefixLen, addressOffsetLen, contractPageLen, contractPrefixLen, contractFastmapPrefixLen, contractOffsetLen int) (*Builder, error) {
@@ -272,9 +272,7 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		offsetLen:          offsetLen,
 		offsetIndexLen:     offsetIndexLen,
 		addressRecordSize:  addressRecordSize,
-		addressPrefixLen:   addressPrefixLen,
 		contractRecordSize: contractRecordSize,
-		contractPrefixLen:  contractPrefixLen,
 	}, nil
 }
 
