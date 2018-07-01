@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/NebulousLabs/Sia/crypto"
+	"github.com/NebulousLabs/Sia/encoding"
 	"github.com/NebulousLabs/Sia/types"
 	"github.com/NebulousLabs/merkletree"
 )
@@ -24,6 +25,29 @@ func VerifyBlockHeader(header types.BlockHeader) error {
 		return fmt.Errorf("Block header validation failed: FutureTimestamp")
 	}
 	return nil
+}
+
+
+func getHeadersSlice(headers []byte) (headersSlice []types.BlockHeader, err error) {
+	headersSlice = make([]types.BlockHeader, len(headers))
+	headersSlice[0] = types.BlockHeader{
+		Timestamp:  types.GenesisTimestamp,
+		MerkleRoot: types.GenesisBlock.MerkleRoot(),
+	}
+	for i := 1; i < len(headers); i++ {
+		headersSlice[i] = types.BlockHeader{
+			ParentID:  headersSlice[i-1].ID(),
+			Timestamp: types.Timestamp(encoding.DecUint64(headers[(i*48 + 8):(i*48 + 16)])),
+		}
+		copy(headersSlice[i].Nonce[:], headers[i*48:(i*48+8)])
+		copy(headersSlice[i].MerkleRoot[:], headers[(i*48+16):(i*48+48)])
+	}
+	if len(headers) > 1 {
+		if headersSlice[1].ParentID != types.GenesisID {
+			return nil, fmt.Errorf("ParentID of 2nd header is not GenesisID")
+		}
+	}
+	return headersSlice, nil
 }
 
 func VerifyProof(merkleRoot, data, proof []byte, proofIndex int, numLeaves int) bool {
