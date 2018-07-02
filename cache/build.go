@@ -211,7 +211,7 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	if err != nil {
 		return nil, fmt.Errorf("opening addresses.tmp: %v", err)
 	}
-	addresses, err := emsort.New(addressesMultiMapWriter, addressRecordSize, emsort.BytesLess, memLimit, addressestmp)
+	addresses, err := emsort.New(addressesMultiMapWriter, addressRecordSize, emsort.BytesLess, false, memLimit, addressestmp)
 	if err != nil {
 		return nil, fmt.Errorf("emsort.New: %v", err)
 	}
@@ -230,7 +230,7 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	if err != nil {
 		return nil, fmt.Errorf("opening contracts.tmp: %v", err)
 	}
-	contracts, err := emsort.New(contractsMultiMapWriter, contractRecordSize, emsort.BytesLess, memLimit, contractstmp)
+	contracts, err := emsort.New(contractsMultiMapWriter, contractRecordSize, emsort.BytesLess, false, memLimit, contractstmp)
 	if err != nil {
 		return nil, fmt.Errorf("emsort.New: %v", err)
 	}

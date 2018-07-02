@@ -37,13 +37,14 @@ func BytesLess(a []byte, b []byte) bool {
 // New constructs a new SortedWriter that wraps out, chunks data into sortable
 // items using the given chunk size, compares them using the given Less and limits
 // the amount of RAM used to approximately memLimit.
-func New(out io.Writer, chunkSize int, less Less, memLimit int, tmpfile *os.File) (SortedWriter, error) {
+func New(out io.Writer, chunkSize int, less Less, uniq bool, memLimit int, tmpfile *os.File) (SortedWriter, error) {
 	return &sorted{
 		tmpfile:   tmpfile,
 		out:       out,
 		less:      less,
 		memLimit:  memLimit,
 		chunkSize: chunkSize,
+		uniq:      uniq,
 	}, nil
 }
 
@@ -55,6 +56,7 @@ type sorted struct {
 	chunkSize int
 	sizes     []int
 	vals      []byte
+	uniq      bool
 }
 
 func (s *sorted) Write(b []byte) (int, error) {
@@ -73,6 +75,20 @@ func (s *sorted) flush() error {
 		return fmt.Errorf("Writes to emsort should be aligned")
 	}
 	sort.Sort(&inmemory{s.vals, s.less, s.chunkSize})
+	if s.uniq {
+		dst := 0
+		dstSlice := s.vals[dst : dst+s.chunkSize]
+		for src := s.chunkSize; src < len(s.vals); src += s.chunkSize {
+			srcSlice := s.vals[src : src+s.chunkSize]
+			if bytes.Equal(dstSlice, srcSlice) {
+				continue
+			}
+			dst += s.chunkSize
+			dstSlice = s.vals[dst : dst+s.chunkSize]
+			copy(dstSlice, srcSlice)
+		}
+		s.vals = s.vals[:dst+s.chunkSize]
+	}
 	if n, err := s.tmpfile.Write(s.vals); err != nil {
 		return err
 	} else if n != len(s.vals) {
@@ -137,12 +153,20 @@ func (s *sorted) finalSort(files []*bufio.Reader) error {
 		entries.entries[i] = e
 	}
 	heap.Init(entries)
+	prev := make([]byte, s.chunkSize)
+	first := true
 	for {
 		e := heap.Pop(entries).(*entry)
-		if n, err := s.out.Write(e.val); err != nil {
-			return fmt.Errorf("Error writing to final output: %v", err)
-		} else if n != len(e.val) {
-			return io.ErrShortWrite
+		if !s.uniq || first || !bytes.Equal(e.val, prev) {
+			if n, err := s.out.Write(e.val); err != nil {
+				return fmt.Errorf("Error writing to final output: %v", err)
+			} else if n != len(e.val) {
+				return io.ErrShortWrite
+			}
+			if s.uniq {
+				first = false
+				copy(prev, e.val)
+			}
 		}
 		if has, err := e.Read(); err != nil {
 			return err

@@ -21,7 +21,7 @@ func TestRoundTripMultipleFiles(t *testing.T) {
 	}
 	defer os.Remove(tmpfile.Name())
 	w := &assertingWriter{&bytes.Buffer{}}
-	s, err := New(w, 8, less, 1000, tmpfile)
+	s, err := New(w, 8, less, false, 1000, tmpfile)
 	doTestRoundTrip(t, w, s, err)
 }
 
@@ -32,7 +32,7 @@ func TestRoundTripSingleFile(t *testing.T) {
 	}
 	defer os.Remove(tmpfile.Name())
 	w := &assertingWriter{&bytes.Buffer{}}
-	s, err := New(w, 8, less, 100000000, tmpfile)
+	s, err := New(w, 8, less, false, 100000000, tmpfile)
 	doTestRoundTrip(t, w, s, err)
 }
 
@@ -43,7 +43,7 @@ func TestEmpty(t *testing.T) {
 	}
 	defer os.Remove(tmpfile.Name())
 	w := bytes.NewBuffer(nil)
-	s, err := New(w, 8, less, 100000000, tmpfile)
+	s, err := New(w, 8, less, false, 100000000, tmpfile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +53,31 @@ func TestEmpty(t *testing.T) {
 	}
 	if w.Len() != 0 {
 		t.Fatal("Expected the buffer to be empty")
+	}
+}
+
+func TestUniq(t *testing.T) {
+	tmpfile, err := ioutil.TempFile("", "emsort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+	w := bytes.NewBuffer(nil)
+	s, err := New(w, 8, less, true, 1000, tmpfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := []byte("12345678")
+	for i := 0; i < 1000000; i++ {
+		if _, err := s.Write(record); err != nil {
+			t.Fatalf("s.Write: %v", err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(w.Bytes(), record) {
+		t.Fatal("Expected to get just one record in output, got something else.")
 	}
 }
 

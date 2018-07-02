@@ -150,7 +150,7 @@ func NewBuilder(dictLen, fragmentLen, tileLen, memLimit, counterLen, minCount, m
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sort.tmp file: %v", err)
 	}
-	sorted, err := emsort.New(c, tileLen, emsort.BytesLess, memLimit, sortTmp)
+	sorted, err := emsort.New(c, tileLen, emsort.BytesLess, false, memLimit, sortTmp)
 	if err != nil {
 		return nil, fmt.Errorf("emsort.New: %v", err)
 	}
