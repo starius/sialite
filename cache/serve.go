@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -188,32 +189,47 @@ func (s *Server) ContractHistory(contract []byte, start string) (history []Item,
 }
 
 func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (history []Item, next string, err error) {
+	var tmp [8]byte
+	tmpBytes := tmp[:]
 	values, err := m.Lookup(prefix)
-	if err != nil || values == nil {
+	if err != nil || len(values) == 0 {
 		return nil, "", err
 	}
 	size := len(values) / s.offsetIndexLen
-	if size > MAX_HISTORY_SIZE {
-		size = MAX_HISTORY_SIZE
-		// TODO implement "next" logic.
+	getOffset := func(i int) int {
+		begin := i * s.offsetIndexLen
+		end := begin + s.offsetIndexLen
+		copy(tmpBytes, values[begin:end])
+		return int(binary.LittleEndian.Uint64(tmpBytes))
 	}
-	indexPos := 0
-	var tmp [8]byte
-	tmpBytes := tmp[:]
-	for i := 0; i < size; i++ {
-		indexEnd := indexPos + s.offsetIndexLen
-		copy(tmpBytes, values[indexPos:indexEnd])
+	firstIndex := 0
+	if start != "" {
+		firstIndex, err = strconv.Atoi(start)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed parsing 'start': %v", err)
+		}
+	}
+	if firstIndex < 0 || firstIndex >= size {
+		return nil, "", ErrTooLargeIndex
+	}
+	endIndex := firstIndex + MAX_HISTORY_SIZE
+	if endIndex > size {
+		endIndex = size
+	}
+	if endIndex == size {
+		next = ""
+	} else {
+		next = strconv.Itoa(endIndex)
+	}
+	for i := firstIndex; i < endIndex; i++ {
 		// Value 0 is special on wire, so all indices are shifted.
-		wireItemIndex := int(binary.LittleEndian.Uint64(tmpBytes))
-		itemIndex := wireItemIndex - 1
-		indexPos = indexEnd
-		item, err := s.GetItem(itemIndex)
+		item, err := s.GetItem(getOffset(i) - 1)
 		if err != nil {
 			return nil, "", err
 		}
 		history = append(history, item)
 	}
-	return history, "", nil
+	return history, next, nil
 }
 
 var (

@@ -26,17 +26,28 @@ func main() {
 		panic(err)
 	}
 	respHeaders.Body.Close()
-	respHistory, err := http.Get("http://" + *server + "/v1/address-history?address=" + *address)
-	if err != nil {
-		panic(err)
+	next := ""
+	var wholeHistory []cache.Item
+	for {
+		url := fmt.Sprintf("http://%s/v1/address-history?address=%s&start=%s", *server, *address, next)
+		respHistory, err := http.Get(url)
+		if err != nil {
+			panic(err)
+		}
+		if respHistory.StatusCode != http.StatusOK {
+			panic(respHistory.StatusCode)
+		}
+		var history []cache.Item
+		if err := encoding.NewDecoder(respHistory.Body).DecodeAll(&next, &history); err != nil {
+			panic(err)
+		}
+		respHistory.Body.Close()
+		wholeHistory = append(wholeHistory, history...)
+		if next == "" {
+			break
+		}
 	}
-	var next string
-	var history []cache.Item
-	if err := encoding.NewDecoder(respHistory.Body).DecodeAll(&next, &history); err != nil {
-		panic(err)
-	}
-	respHistory.Body.Close()
-	for _, item := range history {
+	for _, item := range wholeHistory {
 		data, err := item.SourceData(nil)
 		if err != nil {
 			panic(err)
