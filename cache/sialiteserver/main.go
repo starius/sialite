@@ -39,7 +39,8 @@ func handleAddressHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addressBytes := address[:]
-	history, next, err := s.AddressHistory(addressBytes, "")
+	start := r.URL.Query().Get("start")
+	history, next, err := s.AddressHistory(addressBytes, start)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "AddressHistory: %v.\n", err)
@@ -71,7 +72,8 @@ func handleContractHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contractBytes := id[:]
-	history, next, err := s.ContractHistory(contractBytes, "")
+	start := r.URL.Query().Get("start")
+	history, next, err := s.ContractHistory(contractBytes, start)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "ContractHistory: %v.\n", err)
