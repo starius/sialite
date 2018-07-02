@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	MAX_HISTORY_SIZE = 2
+	MAX_HISTORY_SIZE = 20
 )
 
 type Server struct {
