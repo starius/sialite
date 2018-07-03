@@ -10,7 +10,12 @@ import (
 	"github.com/NebulousLabs/merkletree"
 )
 
-func VerifyBlockHeader(header types.BlockHeader) error {
+func verifyBlockHeader(header types.BlockHeader, minTimestamp types.Timestamp) error {
+	// Check that the timestamp is not too far in the past to be acceptable.
+	if header.Timestamp < minTimestamp {
+		return fmt.Errorf("Block header validation failed: EarlyTimestamp")
+	}
+
 	// Check if the block is in the extreme future. We make a distinction between
 	// future and extreme future because there is an assumption that by the time
 	// the extreme future arrives, this block will no longer be a part of the
