@@ -296,11 +296,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	respHeaders.Body.Close()
+	if err := cache.VerifyBlockHeaders(headersBytes); err != nil {
+		panic(err)
+	}
 	headers, err := getHeadersSlice(headersBytes)
 	if err != nil {
 		panic(err)
 	}
-	respHeaders.Body.Close()
 	seedBytes, err := ioutil.ReadFile(*seedFile)
 	if err != nil {
 		panic(err)
