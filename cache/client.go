@@ -84,6 +84,28 @@ func getHeadersSlice(headers []byte) (headersSlice []types.BlockHeader, err erro
 	return headersSlice, nil
 }
 
+func VerifyBlockHeaders(headers []byte) error {
+	headersSlice, err := getHeadersSlice(headers)
+	if err != nil {
+		return err
+	}
+	if len(headers) < 1 {
+		return fmt.Errorf("Can't verify list of 0 headers")
+	}
+	minTimestamp := headersSlice[0].Timestamp
+	for i, header := range headersSlice {
+		err = verifyBlockHeader(header, minTimestamp)
+		if err != nil {
+			return err
+		}
+		minTimestamp, err = minimumValidChildTimestamp(headersSlice, i)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func VerifyProof(merkleRoot, data, proof []byte, proofIndex int, numLeaves int) bool {
 	proofSet := [][]byte{data}
 	start := 0
