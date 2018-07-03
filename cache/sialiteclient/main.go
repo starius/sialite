@@ -37,6 +37,10 @@ func main() {
 		panic(err)
 	}
 	respHistory.Body.Close()
+	err = cache.VerifyBlockHeaders(headers)
+	if err != nil {
+		panic(err)
+	}
 	for _, item := range history {
 		var data []byte
 		if item.Compression == cache.NO_COMPRESSION {
