@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/NebulousLabs/Sia/crypto"
 	"github.com/NebulousLabs/Sia/encoding"
@@ -27,6 +28,34 @@ func VerifyBlockHeader(header types.BlockHeader) error {
 	return nil
 }
 
+// minimumValidChildTimestamp returns the earliest timestamp that a child node
+// can have while still being valid.
+func minimumValidChildTimestamp(headers []types.BlockHeader, headerIndex int) (minTimestamp types.Timestamp, err error) {
+	// Get the previous MedianTimestampWindow timestamps.
+	windowTimes := make(types.TimestampSlice, types.MedianTimestampWindow)
+	windowTimes[0] = headers[headerIndex].Timestamp
+	parent := headers[headerIndex].ParentID
+	for i := 1; i < int(types.MedianTimestampWindow); i++ {
+		// If the genesis block is 'parent', use the genesis block timestamp
+		// for all remaining times.
+		if parent == (types.BlockID{}) {
+			windowTimes[i] = windowTimes[i-1]
+			continue
+		}
+
+		if (headerIndex - i) < 0 {
+			return 0, fmt.Errorf(
+				"minimumValidChildTimestamp: headers are not sorted properly or 1st header is not genesis header",
+			)
+		}
+		parent = headers[headerIndex-i].ParentID
+		windowTimes[i] = headers[headerIndex-i].Timestamp
+	}
+	sort.Sort(windowTimes)
+
+	// Return the median of the sorted timestamps.
+	return windowTimes[len(windowTimes)/2], nil
+}
 
 func getHeadersSlice(headers []byte) (headersSlice []types.BlockHeader, err error) {
 	headersSlice = make([]types.BlockHeader, len(headers))
