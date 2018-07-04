@@ -35,7 +35,7 @@ func verifyBlockHeader(header types.BlockHeader, minTimestamp types.Timestamp) e
 
 // minimumValidChildTimestamp returns the earliest timestamp that a child node
 // can have while still being valid.
-func minimumValidChildTimestamp(headers []types.BlockHeader, headerIndex int) (minTimestamp types.Timestamp, err error) {
+func minimumValidChildTimestamp(headers []types.BlockHeader, headerIndex int) (types.Timestamp, error) {
 	// Get the previous MedianTimestampWindow timestamps.
 	windowTimes := make(types.TimestampSlice, types.MedianTimestampWindow)
 	windowTimes[0] = headers[headerIndex].Timestamp
@@ -62,9 +62,9 @@ func minimumValidChildTimestamp(headers []types.BlockHeader, headerIndex int) (m
 	return windowTimes[len(windowTimes)/2], nil
 }
 
-func getHeadersSlice(headers []byte) (headersSlice []types.BlockHeader, err error) {
+func getHeadersSlice(headers []byte) ([]types.BlockHeader, error) {
 	headersN := len(headers) / 48
-	headersSlice = make([]types.BlockHeader, headersN)
+	headersSlice := make([]types.BlockHeader, headersN)
 	headersSlice[0] = types.BlockHeader{
 		Timestamp:  types.GenesisTimestamp,
 		MerkleRoot: types.GenesisBlock.MerkleRoot(),
