@@ -25,8 +25,8 @@ func verifyBlockHeader(header types.BlockHeader, minTimestamp types.Timestamp) e
 	}
 
 	// Check if the block is in the near future, but too far to be acceptable.
-	// This is the last check because it's an expensive check, and not worth
-	// performing if the earlier checks failed.
+	// The checks between ExtremeFutureThreshold and FutureThreshold
+	// take some time, so we need to check FutureThreshold last.
 	if header.Timestamp > types.CurrentTimestamp()+types.FutureThreshold {
 		return fmt.Errorf("Block header validation failed: FutureTimestamp")
 	}
@@ -48,7 +48,7 @@ func minimumValidChildTimestamp(headers []types.BlockHeader, headerIndex int) (m
 			continue
 		}
 
-		if (headerIndex - i) < 0 {
+		if headerIndex-i < 0 {
 			return 0, fmt.Errorf(
 				"minimumValidChildTimestamp: headers are not sorted properly or 1st header is not genesis header",
 			)
@@ -63,23 +63,23 @@ func minimumValidChildTimestamp(headers []types.BlockHeader, headerIndex int) (m
 }
 
 func getHeadersSlice(headers []byte) (headersSlice []types.BlockHeader, err error) {
-	headersSlice = make([]types.BlockHeader, len(headers))
+	headersN := len(headers) / 48
+	headersSlice = make([]types.BlockHeader, headersN)
 	headersSlice[0] = types.BlockHeader{
 		Timestamp:  types.GenesisTimestamp,
 		MerkleRoot: types.GenesisBlock.MerkleRoot(),
 	}
-	for i := 1; i < len(headers); i++ {
+	for i := 1; i < headersN; i++ {
+		header := headers[i*48 : (i*48 + 48)]
 		headersSlice[i] = types.BlockHeader{
 			ParentID:  headersSlice[i-1].ID(),
-			Timestamp: types.Timestamp(encoding.DecUint64(headers[(i*48 + 8):(i*48 + 16)])),
+			Timestamp: types.Timestamp(encoding.DecUint64(header[8:16])),
 		}
-		copy(headersSlice[i].Nonce[:], headers[i*48:(i*48+8)])
-		copy(headersSlice[i].MerkleRoot[:], headers[(i*48+16):(i*48+48)])
+		copy(headersSlice[i].Nonce[:], header[:8])
+		copy(headersSlice[i].MerkleRoot[:], header[16:48])
 	}
-	if len(headers) > 1 {
-		if headersSlice[1].ParentID != types.GenesisID {
-			return nil, fmt.Errorf("ParentID of 2nd header is not GenesisID")
-		}
+	if headersN > 1 && headersSlice[1].ParentID != types.GenesisID {
+		return nil, fmt.Errorf("ParentID of 2nd header is not GenesisID")
 	}
 	return headersSlice, nil
 }
@@ -89,7 +89,7 @@ func VerifyBlockHeaders(headers []byte) error {
 	if err != nil {
 		return err
 	}
-	if len(headers) < 1 {
+	if len(headers)/48 == 0 {
 		return fmt.Errorf("Can't verify list of 0 headers")
 	}
 	minTimestamp := headersSlice[0].Timestamp
