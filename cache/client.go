@@ -31,10 +31,11 @@ func verifyBlockHeader(header types.BlockHeader, minTimestamp types.Timestamp) e
 }
 
 // minimumValidChildTimestamp returns the earliest timestamp that a child node
-// can have while still being valid.
-func minimumValidChildTimestamp(headers []types.BlockHeader, headerIndex int) (types.Timestamp, error) {
+// can have while still being valid (child node is one following the last header).
+func minimumValidChildTimestamp(headers []types.BlockHeader) (types.Timestamp, error) {
 	// Get the previous MedianTimestampWindow timestamps.
 	windowTimes := make(types.TimestampSlice, types.MedianTimestampWindow)
+	headerIndex := len(headers) - 1
 	windowTimes[0] = headers[headerIndex].Timestamp
 	parent := headers[headerIndex].ParentID
 	for i := 1; i < int(types.MedianTimestampWindow); i++ {
@@ -95,7 +96,7 @@ func VerifyBlockHeaders(headers []byte) error {
 		if err != nil {
 			return err
 		}
-		minTimestamp, err = minimumValidChildTimestamp(headersSlice, i)
+		minTimestamp, err = minimumValidChildTimestamp(headersSlice[:i+1])
 		if err != nil {
 			return err
 		}
