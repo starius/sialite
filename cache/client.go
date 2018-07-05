@@ -16,17 +16,14 @@ func verifyBlockHeader(header types.BlockHeader, minTimestamp types.Timestamp) e
 		return fmt.Errorf("Block header validation failed: EarlyTimestamp")
 	}
 
-	// Check if the block is in the extreme future. We make a distinction between
-	// future and extreme future because there is an assumption that by the time
-	// the extreme future arrives, this block will no longer be a part of the
-	// longest fork because it will have been ignored by all of the miners.
-	if header.Timestamp > types.CurrentTimestamp()+types.ExtremeFutureThreshold {
-		return fmt.Errorf("Block header validation failed: ExtremeFutureTimestamp")
-	}
+	// Check if the block is in the extreme future is omitted because it does
+	// included in the further check (FutureThreshold check) and does not make
+	// sense as optimization in our case.
+	//if header.Timestamp > types.CurrentTimestamp()+types.ExtremeFutureThreshold {
+	//	return fmt.Errorf("Block header validation failed: ExtremeFutureTimestamp")
+	//}
 
 	// Check if the block is in the near future, but too far to be acceptable.
-	// The checks between ExtremeFutureThreshold and FutureThreshold
-	// take some time, so we need to check FutureThreshold last.
 	if header.Timestamp > types.CurrentTimestamp()+types.FutureThreshold {
 		return fmt.Errorf("Block header validation failed: FutureTimestamp")
 	}
