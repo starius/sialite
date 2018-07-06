@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 
@@ -28,6 +29,11 @@ func verifyBlockHeader(header types.BlockHeader, minTimestamp types.Timestamp) e
 		return fmt.Errorf("Block header validation failed: FutureTimestamp")
 	}
 	return nil
+}
+
+// checkTarget returns true if the block's ID meets the given target.
+func checkTarget(id types.BlockID, target types.Target) bool {
+	return bytes.Compare(target[:], id[:]) >= 0
 }
 
 // minimumValidChildTimestamp returns the earliest timestamp that a child node
