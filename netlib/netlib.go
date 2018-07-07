@@ -90,13 +90,11 @@ func DownloadBlocks(ctx context.Context, bchan chan *types.Block, conn io.ReadWr
 		if err := encoding.ReadObject(conn, &moreAvailable, 1); err != nil {
 			return prevBlockID, err
 		}
-		log.Printf("moreAvailable = %v.", moreAvailable)
 		for i := range newBlocks {
 			b := &newBlocks[i]
 			if b.ParentID != prevBlockID {
 				return prevBlockID, fmt.Errorf("parent: %s, prev: %s", b.ParentID, prevBlockID)
 			}
-			log.Printf("Downloaded block %s.", b.ID())
 			bchan <- b
 			prevBlockID = b.ID()
 		}
