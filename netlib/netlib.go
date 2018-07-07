@@ -63,9 +63,11 @@ func Connect(ctx context.Context, node string) (net.Conn, error) {
 }
 
 func DownloadBlocks(ctx context.Context, bchan chan *types.Block, conn io.ReadWriter, prevBlockID types.BlockID) (types.BlockID, error) {
+	var prevBlock *types.Block
+	var err error
 	var rpcName [8]byte
 	copy(rpcName[:], "SendBlocks")
-	if err := encoding.WriteObject(conn, rpcName); err != nil {
+	if err = encoding.WriteObject(conn, rpcName); err != nil {
 		return prevBlockID, err
 	}
 	var history [32]types.BlockID
@@ -73,31 +75,33 @@ func DownloadBlocks(ctx context.Context, bchan chan *types.Block, conn io.ReadWr
 	moreAvailable := true
 	// Send the block ids.
 	history[0] = prevBlockID
-	if err := encoding.WriteObject(conn, history); err != nil {
-		return prevBlockID, err
+	if err = encoding.WriteObject(conn, history); err != nil {
+		goto exit
 	}
 	for moreAvailable {
 		select {
 		case <-ctx.Done():
-			return prevBlockID, ctx.Err()
+			err = ctx.Err()
+			goto exit
 		default:
 		}
 		// Read a slice of blocks from the wire.
 		var newBlocks []types.Block
-		if err := encoding.ReadObject(conn, &newBlocks, uint64(consensus.MaxCatchUpBlocks)*types.BlockSizeLimit); err != nil {
-			return prevBlockID, err
+		if err = encoding.ReadObject(conn, &newBlocks, uint64(consensus.MaxCatchUpBlocks)*types.BlockSizeLimit); err != nil {
+			goto exit
 		}
-		if err := encoding.ReadObject(conn, &moreAvailable, 1); err != nil {
-			return prevBlockID, err
+		if err = encoding.ReadObject(conn, &moreAvailable, 1); err != nil {
+			goto exit
 		}
 		for i := range newBlocks {
 			b := &newBlocks[i]
-			if b.ParentID != prevBlockID {
-				return prevBlockID, fmt.Errorf("parent: %s, prev: %s", b.ParentID, prevBlockID)
-			}
 			bchan <- b
-			prevBlockID = b.ID()
+			prevBlock = b
 		}
+	}
+exit:
+	if prevBlock != nil {
+		prevBlockID = prevBlock.ID()
 	}
 	return prevBlockID, nil
 }
