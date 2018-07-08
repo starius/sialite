@@ -126,6 +126,86 @@ func calculateBlockTotals(
 	return newTotalTime, newTotalTarget
 }
 
+func oakAdjustment(
+	parentTotalTime int64,
+	parentTotalTarget types.Target,
+	currentTarget types.Target,
+	parentHeight types.BlockHeight,
+	parentTimestamp types.Timestamp,
+) types.Target {
+	// Determine the delta of the current total time vs. the desired total time.
+	// The desired total time is the difference between the genesis block
+	// timestamp and the current block timestamp.
+	var delta int64
+	if parentHeight < types.OakHardforkFixBlock {
+		// This is the original code. It is incorrect, because it is comparing
+		// 'expectedTime', an absolute value, to 'parentTotalTime', a value
+		// which gets compressed every block. The result is that 'expectedTime'
+		// is substantially larger than 'parentTotalTime' always, and that the
+		// shifter is always reading that blocks have been coming out far too
+		// quickly.
+		expectedTime := int64(types.BlockFrequency * parentHeight)
+		delta = expectedTime - parentTotalTime
+	} else {
+		// This is the correct code. The expected time is an absolute time based
+		// on the genesis block, and the delta is an absolute time based on the
+		// timestamp of the parent block.
+		//
+		// Rules elsewhere in consensus ensure that the timestamp of the parent
+		// block has not been manipulated by more than a few hours, which is
+		// accurate enough for this logic to be safe.
+		expectedTime := int64(types.BlockFrequency*parentHeight) + int64(types.GenesisTimestamp)
+		delta = expectedTime - int64(parentTimestamp)
+	}
+	// Convert the delta in to a target block time.
+	square := delta * delta
+	if delta < 0 {
+		// If the delta is negative, restore the negative value.
+		square *= -1
+	}
+	shift := square / 10e6 // 10e3 second delta leads to 10 second shift.
+	targetBlockTime := int64(types.BlockFrequency) + shift
+
+	// Clamp the block time to 1/3 and 3x the target block time.
+	if targetBlockTime < int64(types.BlockFrequency)/types.OakMaxBlockShift {
+		targetBlockTime = int64(types.BlockFrequency) / types.OakMaxBlockShift
+	}
+	if targetBlockTime > int64(types.BlockFrequency)*types.OakMaxBlockShift {
+		targetBlockTime = int64(types.BlockFrequency) * types.OakMaxBlockShift
+	}
+
+	// Determine the hashrate using the total time and total target. Set a
+	// minimum total time of 1 to prevent divide by zero and underflows.
+	if parentTotalTime < 1 {
+		parentTotalTime = 1
+	}
+	visibleHashrate := parentTotalTarget.Difficulty().Div64(uint64(parentTotalTime)) // Hashes per second.
+	// Handle divide by zero risks.
+	if visibleHashrate.IsZero() {
+		visibleHashrate = visibleHashrate.Add(types.NewCurrency64(1))
+	}
+	if targetBlockTime == 0 {
+		// This code can only possibly be triggered if the block frequency is
+		// less than 3, but during testing the block frequency is 1.
+		targetBlockTime = 1
+	}
+
+	// Determine the new target by multiplying the visible hashrate by the
+	// target block time. Clamp it to a 0.4% difficulty adjustment.
+	maxNewTarget := currentTarget.MulDifficulty(types.OakMaxRise) // Max = difficulty increase (target decrease)
+	minNewTarget := currentTarget.MulDifficulty(types.OakMaxDrop) // Min = difficulty decrease (target increase)
+	newTarget := types.RatToTarget(new(big.Rat).SetFrac(types.RootDepth.Int(), visibleHashrate.Mul64(uint64(targetBlockTime)).Big()))
+	if newTarget.Cmp(maxNewTarget) < 0 {
+		newTarget = maxNewTarget
+	}
+	if newTarget.Cmp(minNewTarget) > 0 {
+		// This can only possibly trigger if the BlockFrequency is less than 3
+		// seconds, but during testing it is 1 second.
+		newTarget = minNewTarget
+	}
+	return newTarget
+}
+
 func VerifyBlockHeaders(headers []byte) error {
 	headersSlice, err := getHeadersSlice(headers)
 	if err != nil {
