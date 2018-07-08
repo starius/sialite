@@ -191,6 +191,7 @@ func (s *Server) ContractHistory(contract []byte, start string) (history []Item,
 func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (history []Item, next string, err error) {
 	var tmp [8]byte
 	tmpBytes := tmp[:]
+	tmpBytesSuffix := tmpBytes[8-s.offsetIndexLen:]
 	values, err := m.Lookup(prefix)
 	if err != nil || len(values) == 0 {
 		return nil, "", err
@@ -199,8 +200,8 @@ func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (h
 	getOffset := func(i int) int {
 		begin := i * s.offsetIndexLen
 		end := begin + s.offsetIndexLen
-		copy(tmpBytes, values[begin:end])
-		return int(binary.LittleEndian.Uint64(tmpBytes))
+		copy(tmpBytesSuffix, values[begin:end])
+		return int(binary.BigEndian.Uint64(tmpBytes))
 	}
 	firstIndex := 0
 	if start != "" {

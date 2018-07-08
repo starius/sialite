@@ -75,6 +75,7 @@ type Builder struct {
 	contractstmp *os.File
 
 	tmpBuf         []byte
+	tmpBufSuffix   []byte
 	itemOffset     []byte
 	addressLoc     []byte
 	addressPrefix  []byte
@@ -239,6 +240,8 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		return nil, fmt.Errorf("too large offsetLen")
 	}
 
+	tmpBuf := make([]byte, 8)
+
 	return &Builder{
 		blockchain:      blockchain,
 		blockchainBuf:   bufio.NewWriter(blockchain),
@@ -257,7 +260,8 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		addressestmp: addressestmp,
 		contractstmp: contractstmp,
 
-		tmpBuf:         make([]byte, 8),
+		tmpBuf:         tmpBuf,
+		tmpBufSuffix:   tmpBuf[len(tmpBuf)-offsetIndexLen:],
 		itemOffset:     itemOffset,
 		addressLoc:     addressLoc,
 		addressPrefix:  addressPrefix,
@@ -316,8 +320,8 @@ func (s *Builder) Add(block *types.Block) error {
 			return io.ErrShortWrite
 		}
 		wireOffsetIndex := s.offsetIndex + 1 // To avoid special 0 value on wire.
-		binary.LittleEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
-		copy(s.itemOffset, s.tmpBuf)
+		binary.BigEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
+		copy(s.itemOffset, s.tmpBufSuffix)
 		if err := s.writeAddress(mp.UnlockHash); err != nil {
 			return err
 		}
@@ -346,8 +350,8 @@ func (s *Builder) Add(block *types.Block) error {
 			return io.ErrShortWrite
 		}
 		wireOffsetIndex := s.offsetIndex + 1 // To avoid special 0 value on wire.
-		binary.LittleEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
-		copy(s.itemOffset, s.tmpBuf)
+		binary.BigEndian.PutUint64(s.tmpBuf, wireOffsetIndex)
+		copy(s.itemOffset, s.tmpBufSuffix)
 		for _, si := range tx.SiacoinInputs {
 			if err := s.writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
 				return err
