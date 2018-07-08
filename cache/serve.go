@@ -203,16 +203,19 @@ func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (h
 		copy(tmpBytesSuffix, values[begin:end])
 		return int(binary.BigEndian.Uint64(tmpBytes))
 	}
-	firstIndex := 0
+	firstOffset := 0
 	if start != "" {
-		firstIndex, err = strconv.Atoi(start)
+		firstOffset, err = strconv.Atoi(start)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed parsing 'start': %v", err)
 		}
 	}
-	if firstIndex < 0 || firstIndex >= size {
+	if firstOffset < 0 || firstOffset > getOffset(size-1) {
 		return nil, "", ErrTooLargeIndex
 	}
+	firstIndex := sort.Search(size, func(i int) bool {
+		return getOffset(i) >= firstOffset
+	})
 	endIndex := firstIndex + MAX_HISTORY_SIZE
 	if endIndex > size {
 		endIndex = size
@@ -220,7 +223,7 @@ func (s *Server) getHistory(prefix []byte, m *fastmap.MultiMap, start string) (h
 	if endIndex == size {
 		next = ""
 	} else {
-		next = strconv.Itoa(endIndex)
+		next = strconv.Itoa(getOffset(endIndex-1) + 1)
 	}
 	for i := firstIndex; i < endIndex; i++ {
 		// Value 0 is special on wire, so all indices are shifted.
