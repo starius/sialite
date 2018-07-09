@@ -26,11 +26,11 @@ type fullItem struct {
 	tx     *types.Transaction
 }
 
-func addressHistory(address string, headersBytes []byte) ([]fullItem, error) {
+func getHistory(kind, id string, headersBytes []byte) ([]fullItem, error) {
 	next := ""
 	var rawItems []cache.Item
 	for {
-		url := fmt.Sprintf("http://%s/v1/address-history?address=%s&start=%s", *server, address, next)
+		url := fmt.Sprintf("http://%s/v1/%s-history?%s=%s&start=%s", *server, kind, kind, id, next)
 		respHistory, err := http.Get(url)
 		if err != nil {
 			return nil, fmt.Errorf("http.Get(%q): %v", url, err)
@@ -82,6 +82,10 @@ func addressHistory(address string, headersBytes []byte) ([]fullItem, error) {
 	return fullItems, nil
 }
 
+func addressHistory(address string, headersBytes []byte) ([]fullItem, error) {
+	return getHistory("address", address, headersBytes)
+}
+
 // generateAddress generates a key and an address from seed.
 // See function generateSpendableKey from Sia. https://git.io/fNfs6
 func generateAddress(seed modules.Seed, index uint64) (types.UnlockConditions, crypto.SecretKey) {
@@ -128,7 +132,14 @@ type income struct {
 	value types.Currency
 }
 
-func findMoney(address types.UnlockHash, item fullItem, blockID types.BlockID) (incomes []income, outcomes []types.SiacoinOutputID) {
+type contractOutput struct {
+	fcid   types.FileContractID
+	rev    uint64
+	income income
+	valid  bool
+}
+
+func findMoney(address types.UnlockHash, item fullItem, blockID types.BlockID) (incomes []income, outcomes []types.SiacoinOutputID, contracts []contractOutput) {
 	if item.payout != nil {
 		if address == item.payout.UnlockHash {
 			id := payoutID(blockID, uint64(item.source.Index))
@@ -146,11 +157,117 @@ func findMoney(address types.UnlockHash, item fullItem, blockID types.BlockID) (
 				incomes = append(incomes, income{id: id, value: so.Value})
 			}
 		}
+		for i0, contract := range item.tx.FileContracts {
+			fcid := item.tx.FileContractID(uint64(i0))
+			for i, o := range contract.ValidProofOutputs {
+				if o.UnlockHash == address {
+					id := fcid.StorageProofOutputID(types.ProofValid, uint64(i))
+					contracts = append(contracts, contractOutput{
+						fcid:   fcid,
+						rev:    contract.RevisionNumber,
+						income: income{id: id, value: o.Value},
+						valid:  true,
+					})
+				}
+			}
+			for i, o := range contract.MissedProofOutputs {
+				if o.UnlockHash == address {
+					id := fcid.StorageProofOutputID(types.ProofMissed, uint64(i))
+					contracts = append(contracts, contractOutput{
+						fcid:   fcid,
+						rev:    contract.RevisionNumber,
+						income: income{id: id, value: o.Value},
+						valid:  false,
+					})
+				}
+			}
+		}
+		for _, contractRev := range item.tx.FileContractRevisions {
+			fcid := contractRev.ParentID
+			for i, o := range contractRev.NewValidProofOutputs {
+				if o.UnlockHash == address {
+					id := fcid.StorageProofOutputID(types.ProofValid, uint64(i))
+					contracts = append(contracts, contractOutput{
+						fcid:   fcid,
+						rev:    contractRev.NewRevisionNumber,
+						income: income{id: id, value: o.Value},
+						valid:  true,
+					})
+				}
+			}
+			for i, o := range contractRev.NewMissedProofOutputs {
+				if o.UnlockHash == address {
+					id := fcid.StorageProofOutputID(types.ProofMissed, uint64(i))
+					contracts = append(contracts, contractOutput{
+						fcid:   fcid,
+						rev:    contractRev.NewRevisionNumber,
+						income: income{id: id, value: o.Value},
+						valid:  false,
+					})
+				}
+			}
+		}
 		// TODO: add other sources of income and outcome.
 	} else {
 		panic("full item with neither payout nor tx")
 	}
 	return
+}
+
+type contractResult struct {
+	lastRev uint64
+	valid   bool
+	closed  bool
+}
+
+func getContractResult(fcid types.FileContractID, headersBytes []byte) (contractResult, error) {
+	items, err := getHistory("contract", fcid.String(), headersBytes)
+	if err != nil {
+		return contractResult{}, err
+	}
+	lastRev := uint64(0)
+	lastWindowEnd := types.BlockHeight(0)
+	valid := false
+	closed := false
+	for _, full := range items {
+		if full.tx == nil {
+			continue
+		}
+		for i0, contract := range full.tx.FileContracts {
+			if full.tx.FileContractID(uint64(i0)) != fcid {
+				continue
+			}
+			if contract.RevisionNumber > lastRev {
+				lastRev = contract.RevisionNumber
+				lastWindowEnd = contract.WindowEnd
+			}
+		}
+		for _, contractRev := range full.tx.FileContractRevisions {
+			if contractRev.ParentID != fcid {
+				continue
+			}
+			if contractRev.NewRevisionNumber > lastRev {
+				lastRev = contractRev.NewRevisionNumber
+				lastWindowEnd = contractRev.NewWindowEnd
+			}
+		}
+		for _, proof := range full.tx.StorageProofs {
+			if proof.ParentID != fcid {
+				continue
+			}
+			valid = true
+			closed = true
+		}
+	}
+	nblocks := len(headersBytes) / 48
+	if types.BlockHeight(nblocks) > lastWindowEnd {
+		closed = true
+	}
+	return contractResult{
+		lastRev: lastRev,
+		valid:   valid,
+		closed:  closed,
+	}, nil
 }
 
 func main() {
@@ -179,6 +296,7 @@ func main() {
 	gap := 0
 	incomesMap := make(map[types.SiacoinOutputID]types.Currency)
 	outcomesMap := make(map[types.SiacoinOutputID]struct{})
+	var allContracts []contractOutput
 	for index := uint64(0); gap < *maxGap; index++ {
 		uc, _ := generateAddress(seed, index)
 		address := uc.UnlockHash()
@@ -192,14 +310,34 @@ func main() {
 			gap = 0
 		}
 		for _, full := range history {
-			incomes, outcomes := findMoney(address, full, headers[full.source.Block].ID())
+			incomes, outcomes, contracts := findMoney(address, full, headers[full.source.Block].ID())
 			for _, income := range incomes {
 				incomesMap[income.id] = income.value
 			}
 			for _, outcome := range outcomes {
 				outcomesMap[outcome] = struct{}{}
 			}
+			allContracts = append(allContracts, contracts...)
 		}
+	}
+	contractsSet := make(map[types.FileContractID]struct{})
+	for _, co := range allContracts {
+		contractsSet[co.fcid] = struct{}{}
+	}
+	contractsResults := make(map[types.FileContractID]contractResult)
+	for fcid := range contractsSet {
+		result, err := getContractResult(fcid, headersBytes)
+		if err != nil {
+			panic(err)
+		}
+		contractsResults[fcid] = result
+	}
+	for _, co := range allContracts {
+		result := contractsResults[co.fcid]
+		if !result.closed || co.rev != result.lastRev || co.valid != result.valid {
+			continue
+		}
+		incomesMap[co.income.id] = co.income.value
 	}
 	unspent := make(map[types.SiacoinOutputID]types.Currency)
 	for id, value := range incomesMap {
@@ -217,5 +355,5 @@ func main() {
 	for _, value := range unspent {
 		total = total.Add(value)
 	}
-	log.Printf("Available money: %s.", total)
+	log.Printf("Available money: %s.", total.HumanString())
 }
