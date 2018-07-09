@@ -132,6 +132,11 @@ type income struct {
 	value types.Currency
 }
 
+type sfincome struct {
+	id    types.SiafundOutputID
+	value types.Currency
+}
+
 type contractOutput struct {
 	fcid   types.FileContractID
 	rev    uint64
@@ -139,7 +144,7 @@ type contractOutput struct {
 	valid  bool
 }
 
-func findMoney(address types.UnlockHash, item fullItem, blockID types.BlockID) (incomes []income, outcomes []types.SiacoinOutputID, contracts []contractOutput) {
+func findMoney(address types.UnlockHash, item fullItem, blockID types.BlockID) (incomes []income, outcomes []types.SiacoinOutputID, sfincomes []sfincome, sfoutcomes []types.SiafundOutputID, contracts []contractOutput) {
 	if item.payout != nil {
 		if address == item.payout.UnlockHash {
 			id := payoutID(blockID, uint64(item.source.Index))
@@ -151,10 +156,21 @@ func findMoney(address types.UnlockHash, item fullItem, blockID types.BlockID) (
 				outcomes = append(outcomes, si.ParentID)
 			}
 		}
+		for _, si := range item.tx.SiafundInputs {
+			if si.UnlockConditions.UnlockHash() == address {
+				sfoutcomes = append(sfoutcomes, si.ParentID)
+			}
+		}
 		for i, so := range item.tx.SiacoinOutputs {
 			if so.UnlockHash == address {
 				id := item.tx.SiacoinOutputID(uint64(i))
 				incomes = append(incomes, income{id: id, value: so.Value})
+			}
+		}
+		for i, so := range item.tx.SiafundOutputs {
+			if so.UnlockHash == address {
+				id := item.tx.SiafundOutputID(uint64(i))
+				sfincomes = append(sfincomes, sfincome{id: id, value: so.Value})
 			}
 		}
 		for i0, contract := range item.tx.FileContracts {
@@ -296,6 +312,8 @@ func main() {
 	gap := 0
 	incomesMap := make(map[types.SiacoinOutputID]types.Currency)
 	outcomesMap := make(map[types.SiacoinOutputID]struct{})
+	sfincomesMap := make(map[types.SiafundOutputID]types.Currency)
+	sfoutcomesMap := make(map[types.SiafundOutputID]struct{})
 	var allContracts []contractOutput
 	for index := uint64(0); gap < *maxGap; index++ {
 		uc, _ := generateAddress(seed, index)
@@ -310,12 +328,18 @@ func main() {
 			gap = 0
 		}
 		for _, full := range history {
-			incomes, outcomes, contracts := findMoney(address, full, headers[full.source.Block].ID())
+			incomes, outcomes, sfincomes, sfoutcomes, contracts := findMoney(address, full, headers[full.source.Block].ID())
 			for _, income := range incomes {
 				incomesMap[income.id] = income.value
 			}
 			for _, outcome := range outcomes {
 				outcomesMap[outcome] = struct{}{}
+			}
+			for _, sfincome := range sfincomes {
+				sfincomesMap[sfincome.id] = sfincome.value
+			}
+			for _, sfoutcome := range sfoutcomes {
+				sfoutcomesMap[sfoutcome] = struct{}{}
 			}
 			allContracts = append(allContracts, contracts...)
 		}
@@ -351,9 +375,26 @@ func main() {
 			log.Printf("Can't find income for outcome %s.", id)
 		}
 	}
+	sfunspent := make(map[types.SiafundOutputID]types.Currency)
+	for id, value := range sfincomesMap {
+		if _, has := sfoutcomesMap[id]; !has {
+			sfunspent[id] = value
+		}
+	}
+	for id := range sfoutcomesMap {
+		if _, has := sfincomesMap[id]; !has {
+			// TODO: return err.
+			log.Printf("Can't find SF income for outcome %s.", id)
+		}
+	}
 	total := types.NewCurrency64(0)
 	for _, value := range unspent {
 		total = total.Add(value)
 	}
 	log.Printf("Available money: %s.", total.HumanString())
+	sftotal := types.NewCurrency64(0)
+	for _, value := range sfunspent {
+		sftotal = sftotal.Add(value)
+	}
+	log.Printf("Available SF: %s.", sftotal)
 }
