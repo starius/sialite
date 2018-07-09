@@ -206,6 +206,37 @@ func oakAdjustment(
 	return newTarget
 }
 
+// targetAdjustmentBase returns the magnitude that the target should be
+// adjusted by before a clamp is applied.
+func targetAdjustmentBase(headers []types.BlockHeader) *big.Rat {
+	currentHeight := types.BlockHeight(len(headers) - 1)
+	currentHeader := headers[currentHeight]
+	// Grab the block that was generated 'TargetWindow' blocks prior to the
+	// parent. If there are not 'TargetWindow' blocks yet, stop at the genesis
+	// block.
+	var windowSize types.BlockHeight
+	if currentHeight > types.TargetWindow {
+		windowSize = types.TargetWindow
+	} else {
+		windowSize = currentHeight
+	}
+
+	timestamp := headers[currentHeight-windowSize].Timestamp
+
+	// The target of a child is determined by the amount of time that has
+	// passed between the generation of its immediate parent and its
+	// TargetWindow'th parent. The expected amount of seconds to have passed is
+	// TargetWindow*BlockFrequency. The target is adjusted in proportion to how
+	// time has passed vs. the expected amount of time to have passed.
+	//
+	// The target is converted to a big.Rat to provide infinite precision
+	// during the calculation. The big.Rat is just the int representation of a
+	// target.
+	timePassed := currentHeader.Timestamp - timestamp
+	expectedTimePassed := types.BlockFrequency * windowSize
+	return big.NewRat(int64(timePassed), int64(expectedTimePassed))
+}
+
 func VerifyBlockHeaders(headers []byte) error {
 	headersSlice, err := getHeadersSlice(headers)
 	if err != nil {
