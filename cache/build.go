@@ -361,6 +361,9 @@ func (s *Builder) Add(block *types.Block) error {
 			if err := s.writeAddress(si.UnlockConditions.UnlockHash()); err != nil {
 				return err
 			}
+			if err := s.writeAddress(si.ClaimUnlockHash); err != nil {
+				return err
+			}
 		}
 		for _, so := range tx.SiacoinOutputs {
 			if err := s.writeAddress(so.UnlockHash); err != nil {
