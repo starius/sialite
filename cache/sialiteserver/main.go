@@ -47,12 +47,6 @@ func handleAddressHistory(w http.ResponseWriter, r *http.Request) {
 		log.Printf("AddressHistory: %v.\n", err)
 		return
 	}
-	if len(history) == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, "Not found.\n")
-		log.Printf("Not found.\n")
-		return
-	}
 	l := encodingLen(history, next)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", l))
 	w.WriteHeader(http.StatusOK)
@@ -78,12 +72,6 @@ func handleContractHistory(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "ContractHistory: %v.\n", err)
 		log.Printf("ContractHistory: %v.\n", err)
-		return
-	}
-	if len(history) == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, "Not found.\n")
-		log.Printf("Not found.\n")
 		return
 	}
 	l := encodingLen(history, next)
