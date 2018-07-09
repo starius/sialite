@@ -60,9 +60,10 @@ func NewServer(dir string) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		offsetLen:        par.OffsetLen,
-		offsetIndexLen:   par.OffsetIndexLen,
-		addressPrefixLen: par.AddressPrefixLen,
+		offsetLen:         par.OffsetLen,
+		offsetIndexLen:    par.OffsetIndexLen,
+		addressPrefixLen:  par.AddressPrefixLen,
+		contractPrefixLen: par.ContractPrefixLen,
 	}
 	v := reflect.ValueOf(s).Elem()
 	st := v.Type()
