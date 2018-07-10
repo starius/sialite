@@ -237,6 +237,20 @@ func targetAdjustmentBase(headers []types.BlockHeader) *big.Rat {
 	return big.NewRat(int64(timePassed), int64(expectedTimePassed))
 }
 
+// clampTargetAdjustment returns a clamped version of the base adjustment
+// value. The clamp keeps the maximum adjustment to ~7x every 2000 blocks. This
+// ensures that raising and lowering the difficulty requires a minimum amount
+// of total work, which prevents certain classes of difficulty adjusting
+// attacks.
+func clampTargetAdjustment(base *big.Rat) *big.Rat {
+	if base.Cmp(types.MaxTargetAdjustmentUp) > 0 {
+		return types.MaxTargetAdjustmentUp
+	} else if base.Cmp(types.MaxTargetAdjustmentDown) < 0 {
+		return types.MaxTargetAdjustmentDown
+	}
+	return base
+}
+
 func VerifyBlockHeaders(headers []byte) error {
 	headersSlice, err := getHeadersSlice(headers)
 	if err != nil {
