@@ -251,6 +251,19 @@ func clampTargetAdjustment(base *big.Rat) *big.Rat {
 	return base
 }
 
+func oldTargetAdjustment(
+	headers []types.BlockHeader,
+	currentHeight types.BlockHeight,
+	currentTarget types.Target,
+) types.Target {
+	if currentHeight%(types.TargetWindow/2) != 0 {
+		return currentTarget
+	}
+	adjustment := clampTargetAdjustment(targetAdjustmentBase(headers))
+	adjustedRatTarget := new(big.Rat).Mul(currentTarget.Rat(), adjustment)
+	return types.RatToTarget(adjustedRatTarget)
+}
+
 func VerifyBlockHeaders(headers []byte) error {
 	headersSlice, err := getHeadersSlice(headers)
 	if err != nil {
