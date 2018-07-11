@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	files = flag.String("files", "", "Dir with output of builder")
+	files = flag.String("files", ".", "Dir with output of builder")
 	addr  = flag.String("addr", ":35813", "Address to run HTTP server")
 
 	s *cache.Server
