@@ -264,6 +264,21 @@ func oldTargetAdjustment(
 	return types.RatToTarget(adjustedRatTarget)
 }
 
+func calculateChildTarget(
+	headers []types.BlockHeader,
+	currentTarget types.Target,
+	parentTotalTime int64,
+	parentTotalTarget types.Target,
+	parentHeight types.BlockHeight,
+	parentTimestamp types.Timestamp,
+) types.Target {
+	if parentHeight < types.OakHardforkBlock {
+		return oldTargetAdjustment(headers, parentHeight+1, currentTarget)
+	} else {
+		return oakAdjustment(parentTotalTime, parentTotalTarget, currentTarget, parentHeight, parentTimestamp)
+	}
+}
+
 func VerifyBlockHeaders(headers []byte) error {
 	headersSlice, err := getHeadersSlice(headers)
 	if err != nil {
