@@ -279,6 +279,32 @@ func calculateChildTarget(
 	}
 }
 
+func getTargets(headers []types.BlockHeader) []types.Target {
+	targets := make([]types.Target, len(headers))
+	// Set the base values.
+	// Parent timestamp for genesis block is GenesisTimestamp as well.
+	parentTimestamp := types.GenesisTimestamp
+	// Parent height for genesis block is 0.
+	parentHeight := types.BlockHeight(0)
+	// Block totals 'before' the genesis block.
+	totalTime := int64(0)
+	totalTarget := types.RootDepth
+	// The first target is root target.
+	targets[0] = types.RootTarget
+	for i := types.BlockHeight(0); i < types.BlockHeight(len(headers))-1; i++ {
+		blockHeader := headers[i]
+		// The algorithm computes the target of a child.
+		// That's why we set i+1s target here.
+		targets[i+1] = calculateChildTarget(headers[:i+1], targets[i], totalTime, totalTarget, parentHeight, parentTimestamp)
+		// Calculate the new block totals.
+		totalTime, totalTarget = calculateBlockTotals(i, blockHeader.ID(), totalTime, parentTimestamp, blockHeader.Timestamp, totalTarget, targets[i])
+		// Update the parents values.
+		parentTimestamp = blockHeader.Timestamp
+		parentHeight = i
+	}
+	return targets
+}
+
 func VerifyBlockHeaders(headers []byte) error {
 	headersSlice, err := getHeadersSlice(headers)
 	if err != nil {
