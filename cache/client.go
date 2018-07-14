@@ -12,7 +12,14 @@ import (
 	"github.com/NebulousLabs/merkletree"
 )
 
-func verifyBlockHeader(header types.BlockHeader, minTimestamp types.Timestamp) error {
+func verifyBlockHeader(
+	header types.BlockHeader,
+	minTimestamp types.Timestamp,
+	target types.Target,
+) error {
+	if !checkTarget(header.ID(), target) {
+		return fmt.Errorf("Block header validation failed: Block is unsolved")
+	}
 	// Check that the timestamp is not too far in the past to be acceptable.
 	if header.Timestamp < minTimestamp {
 		return fmt.Errorf("Block header validation failed: EarlyTimestamp")
@@ -313,9 +320,10 @@ func VerifyBlockHeaders(headers []byte) error {
 	if len(headers)/48 == 0 {
 		return fmt.Errorf("Can't verify list of 0 headers")
 	}
+	targets := getTargets(headersSlice)
 	minTimestamp := headersSlice[0].Timestamp
 	for i, header := range headersSlice {
-		err = verifyBlockHeader(header, minTimestamp)
+		err = verifyBlockHeader(header, minTimestamp, targets[i])
 		if err != nil {
 			return err
 		}
