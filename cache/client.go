@@ -298,7 +298,7 @@ func getTargets(headers []types.BlockHeader) []types.Target {
 	totalTarget := types.RootDepth
 	// The first target is root target.
 	targets[0] = types.RootTarget
-	for i := types.BlockHeight(0); i < types.BlockHeight(len(headers)); i++ {
+	for i := types.BlockHeight(0); i < types.BlockHeight(len(headers))-1; i++ {
 		blockHeader := headers[i]
 		// The algorithm computes the target of a child.
 		// That's why we set i+1s target here.
