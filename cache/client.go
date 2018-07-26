@@ -12,6 +12,22 @@ import (
 	"github.com/NebulousLabs/merkletree"
 )
 
+// BlockInfo is block header and ID of the current block.
+type BlockInfo struct {
+	types.BlockHeader
+
+	CurrentID types.BlockID
+}
+
+// BlockHeadersSet represents a set of block headers.
+type BlockHeadersSet interface {
+	// Get i-th block header in the set.
+	Index(i int) (BlockInfo, error)
+
+	// Get given set's length.
+	Lenght() int
+}
+
 func verifyBlockHeader(
 	header types.BlockHeader,
 	minTimestamp types.Timestamp,
