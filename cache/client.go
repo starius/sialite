@@ -90,7 +90,7 @@ func minimumValidChildTimestamp(headers []types.BlockHeader) (types.Timestamp, e
 	return windowTimes[len(windowTimes)/2], nil
 }
 
-func getHeadersSlice(headers []byte) ([]types.BlockHeader, error) {
+func GetHeadersSlice(headers []byte) ([]types.BlockHeader, error) {
 	headersN := len(headers) / 48
 	headersSlice := make([]types.BlockHeader, headersN)
 	headersSlice[0] = types.BlockHeader{
@@ -329,7 +329,7 @@ func getTargets(headers []types.BlockHeader) []types.Target {
 }
 
 func VerifyBlockHeaders(headers []byte) error {
-	headersSlice, err := getHeadersSlice(headers)
+	headersSlice, err := GetHeadersSlice(headers)
 	if err != nil {
 		return err
 	}
