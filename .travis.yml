@@ -1,0 +1,13 @@
+language: go
+sudo: false
+
+os:
+  - linux
+  - osx
+
+install:
+  - test -z "$(go fmt ./...)"
+
+script:
+  - go get -t -v ./...
+  - go test -v ./...
