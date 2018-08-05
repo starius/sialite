@@ -6,10 +6,10 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/NebulousLabs/Sia/crypto"
-	"github.com/NebulousLabs/Sia/encoding"
-	"github.com/NebulousLabs/Sia/types"
-	"github.com/NebulousLabs/merkletree"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/merkletree"
 )
 
 // BlockInfo is block header and ID of the current block.

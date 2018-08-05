@@ -1,7 +1,7 @@
 package human
 
-import "github.com/NebulousLabs/Sia/types"
-import "github.com/NebulousLabs/Sia/crypto"
+import "gitlab.com/NebulousLabs/Sia/types"
+import "gitlab.com/NebulousLabs/Sia/crypto"
 
 type BlockHeader struct {
 	ID        types.BlockID    `json:"id"`

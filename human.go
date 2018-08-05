@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/NebulousLabs/Sia/types"
 	"github.com/starius/sialite/human"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 type blocksPosition struct {

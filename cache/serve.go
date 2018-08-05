@@ -13,10 +13,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/NebulousLabs/Sia/crypto"
-	"github.com/NebulousLabs/merkletree"
 	"github.com/golang/snappy"
 	"github.com/starius/sialite/fastmap"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/merkletree"
 )
 
 const (

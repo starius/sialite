@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/NebulousLabs/Sia/types"
 	"github.com/starius/sialite/human"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 const (

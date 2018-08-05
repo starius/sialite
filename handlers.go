@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/NebulousLabs/Sia/crypto"
-	"github.com/NebulousLabs/Sia/types"
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 func (db *Database) handleBlocks(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

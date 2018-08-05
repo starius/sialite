@@ -8,9 +8,9 @@ import (
 	"runtime/pprof"
 	"sync"
 
-	"github.com/NebulousLabs/Sia/types"
 	"github.com/starius/sialite/cache"
 	"github.com/starius/sialite/netlib"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (

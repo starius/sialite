@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NebulousLabs/Sia/types"
 	"github.com/julienschmidt/httprouter"
 	"github.com/starius/sialite/netlib"
 	"github.com/xtaci/smux"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
