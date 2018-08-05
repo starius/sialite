@@ -97,30 +97,6 @@ func generateAddress(seed modules.Seed, index uint64) (types.UnlockConditions, c
 	return uc, sk
 }
 
-func getHeadersSlice(headersBytes []byte) ([]types.BlockHeader, error) {
-	headersN := len(headersBytes) / 48
-	headersSlice := make([]types.BlockHeader, headersN)
-	headersSlice[0] = types.BlockHeader{
-		ParentID:   types.GenesisBlock.ParentID,
-		Nonce:      types.GenesisBlock.Nonce,
-		Timestamp:  types.GenesisBlock.Timestamp,
-		MerkleRoot: types.GenesisBlock.MerkleRoot(),
-	}
-	for i := 1; i < headersN; i++ {
-		header := headersBytes[i*48 : (i*48 + 48)]
-		headersSlice[i] = types.BlockHeader{
-			ParentID:  headersSlice[i-1].ID(),
-			Timestamp: types.Timestamp(encoding.DecUint64(header[8:16])),
-		}
-		copy(headersSlice[i].Nonce[:], header[:8])
-		copy(headersSlice[i].MerkleRoot[:], header[16:48])
-	}
-	if headersN > 1 && headersSlice[1].ParentID != types.GenesisID {
-		return nil, fmt.Errorf("ParentID of 2nd header is not GenesisID")
-	}
-	return headersSlice, nil
-}
-
 // payoutID returns SiacoinOutputID for miner payout.
 // See Block.MinerPayoutID from Sia.
 func payoutID(blockID types.BlockID, index uint64) types.SiacoinOutputID {
@@ -296,11 +272,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	headers, err := getHeadersSlice(headersBytes)
+	respHeaders.Body.Close()
+	if err := cache.VerifyBlockHeaders(headersBytes); err != nil {
+		log.Printf("FIXME: %v", err)
+	}
+	headers, err := cache.GetHeadersSlice(headersBytes)
 	if err != nil {
 		panic(err)
 	}
-	respHeaders.Body.Close()
 	seedBytes, err := ioutil.ReadFile(*seedFile)
 	if err != nil {
 		panic(err)
