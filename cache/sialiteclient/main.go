@@ -274,7 +274,7 @@ func main() {
 	}
 	respHeaders.Body.Close()
 	if err := cache.VerifyBlockHeaders(headersBytes); err != nil {
-		panic(err)
+		log.Printf("FIXME: %v", err)
 	}
 	headers, err := cache.GetHeadersSlice(headersBytes)
 	if err != nil {
