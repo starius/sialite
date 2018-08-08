@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/DataDog/zstd"
 	"github.com/dsnet/compress/bzip2"
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/fse"
@@ -223,6 +224,28 @@ func makeBzip2(level int) func([]byte) (int, time.Duration, time.Duration) {
 	}
 }
 
+func makeZstd(level int) func([]byte) (int, time.Duration, time.Duration) {
+	return func(input []byte) (int, time.Duration, time.Duration) {
+		var err error
+		t1 := time.Now()
+		dstBytes, err = zstd.CompressLevel(dstBytes, input, level)
+		if err != nil {
+			panic(err)
+		}
+		l := len(dstBytes)
+		t2 := time.Now()
+		dstBytes2, err = zstd.Decompress(dstBytes2, dstBytes)
+		if err != nil {
+			panic(err)
+		}
+		t3 := time.Now()
+		if !bytes.Equal(dstBytes2, input) {
+			panic("mismatch")
+		}
+		return l, t2.Sub(t1), t3.Sub(t2)
+	}
+}
+
 var (
 	Algos = map[string]func([]byte) (int, time.Duration, time.Duration){
 		"lzw_LSB":       makeLzw(lzw.LSB),
@@ -239,5 +262,9 @@ var (
 		"bzip2_speed":   makeBzip2(bzip2.BestSpeed),
 		"bzip2_default": makeBzip2(bzip2.DefaultCompression),
 		"bzip2_comp":    makeBzip2(bzip2.BestCompression),
+		"zstd_1":        makeZstd(1),
+		"zstd_3":        makeZstd(3),
+		"zstd_10":       makeZstd(10),
+		"zstd_22":       makeZstd(22),
 	}
 )
