@@ -117,7 +117,7 @@ func GetHeadersSlice(headers []byte) ([]types.BlockHeader, error) {
 // calculateBlockTotals computes the new total time and total target
 // for the current block.
 func calculateBlockTotals(
-	currentHeight types.BlockHeight,
+	currentHeight int,
 	currentBlockID types.BlockID,
 	prevTotalTime int64,
 	parentTimestamp, currentTimestamp types.Timestamp,
@@ -139,8 +139,8 @@ func calculateBlockTotals(
 	//
 	// The disruption will be complete well before we can deploy a fix, so
 	// there's no point in fixing it.
-	if currentHeight == types.OakHardforkBlock-1 {
-		prevTotalTime = int64(types.BlockFrequency * currentHeight)
+	if currentHeight == int(types.OakHardforkBlock-1) {
+		prevTotalTime = int64(int(types.BlockFrequency) * currentHeight)
 	}
 
 	// For each value, first multiply by the decay, and then add in the new
@@ -155,21 +155,21 @@ func oakAdjustment(
 	parentTotalTime int64,
 	parentTotalTarget types.Target,
 	currentTarget types.Target,
-	parentHeight types.BlockHeight,
+	parentHeight int,
 	parentTimestamp types.Timestamp,
 ) types.Target {
 	// Determine the delta of the current total time vs. the desired total time.
 	// The desired total time is the difference between the genesis block
 	// timestamp and the current block timestamp.
 	var delta int64
-	if parentHeight < types.OakHardforkFixBlock {
+	if parentHeight < int(types.OakHardforkFixBlock) {
 		// This is the original code. It is incorrect, because it is comparing
 		// 'expectedTime', an absolute value, to 'parentTotalTime', a value
 		// which gets compressed every block. The result is that 'expectedTime'
 		// is substantially larger than 'parentTotalTime' always, and that the
 		// shifter is always reading that blocks have been coming out far too
 		// quickly.
-		expectedTime := int64(types.BlockFrequency * parentHeight)
+		expectedTime := int64(int(types.BlockFrequency) * parentHeight)
 		delta = expectedTime - parentTotalTime
 	} else {
 		// This is the correct code. The expected time is an absolute time based
@@ -179,7 +179,7 @@ func oakAdjustment(
 		// Rules elsewhere in consensus ensure that the timestamp of the parent
 		// block has not been manipulated by more than a few hours, which is
 		// accurate enough for this logic to be safe.
-		expectedTime := int64(types.BlockFrequency*parentHeight) + int64(types.GenesisTimestamp)
+		expectedTime := int64(int(types.BlockFrequency)*parentHeight) + int64(types.GenesisTimestamp)
 		delta = expectedTime - int64(parentTimestamp)
 	}
 	// Convert the delta in to a target block time.
@@ -234,14 +234,14 @@ func oakAdjustment(
 // targetAdjustmentBase returns the magnitude that the target should be
 // adjusted by before a clamp is applied.
 func targetAdjustmentBase(headers []types.BlockHeader) *big.Rat {
-	currentHeight := types.BlockHeight(len(headers) - 1)
+	currentHeight := len(headers) - 1
 	currentHeader := headers[currentHeight]
 	// Grab the block that was generated 'TargetWindow' blocks prior to the
 	// parent. If there are not 'TargetWindow' blocks yet, stop at the genesis
 	// block.
-	var windowSize types.BlockHeight
-	if currentHeight > types.TargetWindow {
-		windowSize = types.TargetWindow
+	var windowSize int
+	if currentHeight > int(types.TargetWindow) {
+		windowSize = int(types.TargetWindow)
 	} else {
 		windowSize = currentHeight
 	}
@@ -258,7 +258,7 @@ func targetAdjustmentBase(headers []types.BlockHeader) *big.Rat {
 	// during the calculation. The big.Rat is just the int representation of a
 	// target.
 	timePassed := currentHeader.Timestamp - timestamp
-	expectedTimePassed := types.BlockFrequency * windowSize
+	expectedTimePassed := int(types.BlockFrequency) * windowSize
 	return big.NewRat(int64(timePassed), int64(expectedTimePassed))
 }
 
@@ -278,10 +278,10 @@ func clampTargetAdjustment(base *big.Rat) *big.Rat {
 
 func oldTargetAdjustment(
 	headers []types.BlockHeader,
-	currentHeight types.BlockHeight,
+	currentHeight int,
 	currentTarget types.Target,
 ) types.Target {
-	if currentHeight%(types.TargetWindow/2) != 0 {
+	if currentHeight%(int(types.TargetWindow)/2) != 0 {
 		return currentTarget
 	}
 	adjustment := clampTargetAdjustment(targetAdjustmentBase(headers))
@@ -294,10 +294,10 @@ func calculateChildTarget(
 	currentTarget types.Target,
 	parentTotalTime int64,
 	parentTotalTarget types.Target,
-	parentHeight types.BlockHeight,
+	parentHeight int,
 	parentTimestamp types.Timestamp,
 ) types.Target {
-	if parentHeight < types.OakHardforkBlock {
+	if parentHeight < int(types.OakHardforkBlock) {
 		return oldTargetAdjustment(headers, parentHeight+1, currentTarget)
 	} else {
 		return oakAdjustment(parentTotalTime, parentTotalTarget, currentTarget, parentHeight, parentTimestamp)
@@ -310,13 +310,13 @@ func getTargets(headers []types.BlockHeader) []types.Target {
 	// Parent timestamp for genesis block is GenesisTimestamp as well.
 	parentTimestamp := types.GenesisTimestamp
 	// Parent height for genesis block is 0.
-	parentHeight := types.BlockHeight(0)
+	parentHeight := 0
 	// Block totals 'before' the genesis block.
 	totalTime := int64(0)
 	totalTarget := types.RootDepth
 	// The first target is root target.
 	targets[0] = types.RootTarget
-	for i := types.BlockHeight(0); i < types.BlockHeight(len(headers))-1; i++ {
+	for i := 0; i < len(headers)-1; i++ {
 		blockHeader := headers[i]
 		// The algorithm computes the target of a child.
 		// That's why we set i+1s target here.
