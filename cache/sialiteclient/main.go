@@ -26,7 +26,7 @@ type fullItem struct {
 	tx     *types.Transaction
 }
 
-func getHistory(kind, id string, headersBytes []byte) ([]fullItem, error) {
+func getHistory(kind, id string, headers cache.BlockHeadersSet) ([]fullItem, error) {
 	next := ""
 	var rawItems []cache.Item
 	for {
@@ -55,11 +55,11 @@ func getHistory(kind, id string, headersBytes []byte) ([]fullItem, error) {
 		if err != nil {
 			return nil, fmt.Errorf("item.SourceData: %v", err)
 		}
-		if item.Block < 0 || item.Block >= len(headersBytes)/48 {
+		if item.Block < 0 || item.Block >= headers.Length() {
 			return nil, fmt.Errorf("bad block index: %d", item.Block)
 		}
-		header := headersBytes[item.Block*48 : (item.Block+1)*48]
-		merkleRoot := header[16:]
+		header := headers.Index(item.Block)
+		merkleRoot := header.MerkleRoot[:]
 		if !cache.VerifyProof(merkleRoot, data, item.MerkleProof, item.Index, item.NumLeaves) {
 			return nil, fmt.Errorf("cache.VerifyProof: bad proof")
 		}
@@ -82,8 +82,8 @@ func getHistory(kind, id string, headersBytes []byte) ([]fullItem, error) {
 	return fullItems, nil
 }
 
-func addressHistory(address string, headersBytes []byte) ([]fullItem, error) {
-	return getHistory("address", address, headersBytes)
+func addressHistory(address string, headers cache.BlockHeadersSet) ([]fullItem, error) {
+	return getHistory("address", address, headers)
 }
 
 // generateAddress generates a key and an address from seed.
@@ -212,8 +212,8 @@ type contractResult struct {
 	closed  bool
 }
 
-func getContractResult(fcid types.FileContractID, headersBytes []byte) (contractResult, error) {
-	items, err := getHistory("contract", fcid.String(), headersBytes)
+func getContractResult(fcid types.FileContractID, headers cache.BlockHeadersSet) (contractResult, error) {
+	items, err := getHistory("contract", fcid.String(), headers)
 	if err != nil {
 		return contractResult{}, err
 	}
@@ -251,7 +251,7 @@ func getContractResult(fcid types.FileContractID, headersBytes []byte) (contract
 			closed = true
 		}
 	}
-	nblocks := len(headersBytes) / 48
+	nblocks := headers.Length()
 	if types.BlockHeight(nblocks) > lastWindowEnd {
 		closed = true
 	}
@@ -273,11 +273,11 @@ func main() {
 		panic(err)
 	}
 	respHeaders.Body.Close()
-	if err := cache.VerifyBlockHeaders(headersBytes); err != nil {
+	headers, err := cache.ParseHeaders(headersBytes)
+	if err != nil {
 		panic(err)
 	}
-	headers, err := cache.GetHeadersSlice(headersBytes)
-	if err != nil {
+	if err := cache.VerifyBlockHeaders(headers); err != nil {
 		panic(err)
 	}
 	seedBytes, err := ioutil.ReadFile(*seedFile)
@@ -297,7 +297,7 @@ func main() {
 	for index := uint64(0); gap < *maxGap; index++ {
 		uc, _ := generateAddress(seed, index)
 		address := uc.UnlockHash()
-		history, err := addressHistory(address.String(), headersBytes)
+		history, err := addressHistory(address.String(), headers)
 		if err != nil {
 			panic(err)
 		}
@@ -307,7 +307,8 @@ func main() {
 			gap = 0
 		}
 		for _, full := range history {
-			incomes, outcomes, sfincomes, sfoutcomes, contracts := findMoney(address, full, headers[full.source.Block].ID())
+			blockID := headers.Index(full.source.Block).CurrentID
+			incomes, outcomes, sfincomes, sfoutcomes, contracts := findMoney(address, full, blockID)
 			for _, income := range incomes {
 				incomesMap[income.id] = income.value
 			}
@@ -329,7 +330,7 @@ func main() {
 	}
 	contractsResults := make(map[types.FileContractID]contractResult)
 	for fcid := range contractsSet {
-		result, err := getContractResult(fcid, headersBytes)
+		result, err := getContractResult(fcid, headers)
 		if err != nil {
 			panic(err)
 		}

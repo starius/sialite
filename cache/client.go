@@ -23,35 +23,81 @@ type BlockInfo struct {
 // BlockHeadersSet represents a set of block headers.
 type BlockHeadersSet interface {
 	// Get i-th block header in the set.
-	Index(i int) (BlockInfo, error)
+	Index(i int) BlockInfo
 
 	// Get given set's length.
-	Lenght() int
+	Length() int
+}
+
+type BlockHeadersSetImpl struct {
+	headersBytes []byte
+	ids          []types.BlockID
+}
+
+func (s *BlockHeadersSetImpl) Length() int {
+	return len(s.ids)
+}
+
+func (s *BlockHeadersSetImpl) Index(i int) BlockInfo {
+	info := BlockInfo{
+		CurrentID: s.ids[i],
+	}
+	info.BlockHeader = headerAt(s.headersBytes, i)
+	if i != 0 {
+		info.ParentID = s.ids[i-1]
+	}
+	return info
+}
+
+func headerAt(headersBytes []byte, i int) (header types.BlockHeader) {
+	headerBytes := headersBytes[i*48 : (i*48 + 48)]
+	header.Timestamp = types.Timestamp(encoding.DecUint64(headerBytes[8:16]))
+	copy(header.Nonce[:], headerBytes[:8])
+	copy(header.MerkleRoot[:], headerBytes[16:48])
+	return
+}
+
+func ParseHeaders(headersBytes []byte) (*BlockHeadersSetImpl, error) {
+	headersN := len(headersBytes) / 48
+	if int(headersN*48) != len(headersBytes) {
+		return nil, fmt.Errorf("bad length of headers: %d", len(headersBytes))
+	}
+	var id types.BlockID
+	var ids []types.BlockID
+	for i := 0; i < headersN; i++ {
+		header := headerAt(headersBytes, i)
+		header.ParentID = id
+		id = header.ID()
+		ids = append(ids, id)
+	}
+	return &BlockHeadersSetImpl{
+		headersBytes: headersBytes,
+		ids:          ids,
+	}, nil
 }
 
 func verifyBlockHeader(
-	header types.BlockHeader,
+	info BlockInfo,
 	minTimestamp types.Timestamp,
 	target types.Target,
 ) error {
-	id := header.ID()
-	if !checkTarget(id, target) {
-		return fmt.Errorf("Block header validation failed: block is unsolved, id %s, target %s", id, hex.EncodeToString(target[:]))
+	if !checkTarget(info.CurrentID, target) {
+		return fmt.Errorf("Block header validation failed: block is unsolved, id %s, target %s", info.CurrentID, hex.EncodeToString(target[:]))
 	}
 	// Check that the timestamp is not too far in the past to be acceptable.
-	if header.Timestamp < minTimestamp {
+	if info.Timestamp < minTimestamp {
 		return fmt.Errorf("Block header validation failed: EarlyTimestamp")
 	}
 
 	// Check if the block is in the extreme future is omitted because it does
 	// included in the further check (FutureThreshold check) and does not make
 	// sense as optimization in our case.
-	//if header.Timestamp > types.CurrentTimestamp()+types.ExtremeFutureThreshold {
+	//if info.Timestamp > types.CurrentTimestamp()+types.ExtremeFutureThreshold {
 	//	return fmt.Errorf("Block header validation failed: ExtremeFutureTimestamp")
 	//}
 
 	// Check if the block is in the near future, but too far to be acceptable.
-	if header.Timestamp > types.CurrentTimestamp()+types.FutureThreshold {
+	if info.Timestamp > types.CurrentTimestamp()+types.FutureThreshold {
 		return fmt.Errorf("Block header validation failed: FutureTimestamp")
 	}
 	return nil
@@ -64,54 +110,33 @@ func checkTarget(id types.BlockID, target types.Target) bool {
 
 // minimumValidChildTimestamp returns the earliest timestamp that a child node
 // can have while still being valid (child node is one following the last header).
-func minimumValidChildTimestamp(headers []types.BlockHeader) (types.Timestamp, error) {
+func minimumValidChildTimestamp(headers BlockHeadersSet, headerIndex int) (types.Timestamp, error) {
 	// Get the previous MedianTimestampWindow timestamps.
 	windowTimes := make(types.TimestampSlice, types.MedianTimestampWindow)
-	headerIndex := len(headers) - 1
-	windowTimes[0] = headers[headerIndex].Timestamp
-	parent := headers[headerIndex].ParentID
+	header := headers.Index(headerIndex)
+	windowTimes[0] = header.Timestamp
+	parentID := header.ParentID
 	for i := 1; i < int(types.MedianTimestampWindow); i++ {
 		// If the genesis block is 'parent', use the genesis block timestamp
 		// for all remaining times.
-		if parent == (types.BlockID{}) {
+		if parentID == (types.BlockID{}) {
 			windowTimes[i] = windowTimes[i-1]
 			continue
 		}
 
-		if headerIndex-i < 0 {
+		if i > headerIndex {
 			return 0, fmt.Errorf(
 				"minimumValidChildTimestamp: headers are not sorted properly or 1st header is not genesis header",
 			)
 		}
-		parent = headers[headerIndex-i].ParentID
-		windowTimes[i] = headers[headerIndex-i].Timestamp
+		header := headers.Index(headerIndex - i)
+		parentID = header.ParentID
+		windowTimes[i] = header.Timestamp
 	}
 	sort.Sort(windowTimes)
 
 	// Return the median of the sorted timestamps.
 	return windowTimes[len(windowTimes)/2], nil
-}
-
-func GetHeadersSlice(headers []byte) ([]types.BlockHeader, error) {
-	headersN := len(headers) / 48
-	headersSlice := make([]types.BlockHeader, headersN)
-	headersSlice[0] = types.BlockHeader{
-		Timestamp:  types.GenesisTimestamp,
-		MerkleRoot: types.GenesisBlock.MerkleRoot(),
-	}
-	for i := 1; i < headersN; i++ {
-		header := headers[i*48 : (i*48 + 48)]
-		headersSlice[i] = types.BlockHeader{
-			ParentID:  headersSlice[i-1].ID(),
-			Timestamp: types.Timestamp(encoding.DecUint64(header[8:16])),
-		}
-		copy(headersSlice[i].Nonce[:], header[:8])
-		copy(headersSlice[i].MerkleRoot[:], header[16:48])
-	}
-	if headersN > 1 && headersSlice[1].ParentID != types.GenesisID {
-		return nil, fmt.Errorf("ParentID of 2nd header is not GenesisID")
-	}
-	return headersSlice, nil
 }
 
 // calculateBlockTotals computes the new total time and total target
@@ -233,9 +258,8 @@ func oakAdjustment(
 
 // targetAdjustmentBase returns the magnitude that the target should be
 // adjusted by before a clamp is applied.
-func targetAdjustmentBase(headers []types.BlockHeader) *big.Rat {
-	currentHeight := len(headers) - 1
-	currentHeader := headers[currentHeight]
+func targetAdjustmentBase(headers BlockHeadersSet, currentHeight int) *big.Rat {
+	currentHeader := headers.Index(currentHeight)
 	// Grab the block that was generated 'TargetWindow' blocks prior to the
 	// parent. If there are not 'TargetWindow' blocks yet, stop at the genesis
 	// block.
@@ -246,7 +270,7 @@ func targetAdjustmentBase(headers []types.BlockHeader) *big.Rat {
 		windowSize = currentHeight
 	}
 
-	timestamp := headers[currentHeight-windowSize].Timestamp
+	timestamp := headers.Index(currentHeight - windowSize).Timestamp
 
 	// The target of a child is determined by the amount of time that has
 	// passed between the generation of its immediate parent and its
@@ -277,20 +301,20 @@ func clampTargetAdjustment(base *big.Rat) *big.Rat {
 }
 
 func oldTargetAdjustment(
-	headers []types.BlockHeader,
+	headers BlockHeadersSet,
 	currentHeight int,
 	currentTarget types.Target,
 ) types.Target {
 	if currentHeight%(int(types.TargetWindow)/2) != 0 {
 		return currentTarget
 	}
-	adjustment := clampTargetAdjustment(targetAdjustmentBase(headers))
+	adjustment := clampTargetAdjustment(targetAdjustmentBase(headers, currentHeight))
 	adjustedRatTarget := new(big.Rat).Mul(currentTarget.Rat(), adjustment)
 	return types.RatToTarget(adjustedRatTarget)
 }
 
 func calculateChildTarget(
-	headers []types.BlockHeader,
+	headers BlockHeadersSet,
 	currentTarget types.Target,
 	parentTotalTime int64,
 	parentTotalTarget types.Target,
@@ -304,8 +328,8 @@ func calculateChildTarget(
 	}
 }
 
-func getTargets(headers []types.BlockHeader) []types.Target {
-	targets := make([]types.Target, len(headers))
+func getTargets(headers BlockHeadersSet) []types.Target {
+	targets := make([]types.Target, headers.Length())
 	// Set the base values.
 	// Parent timestamp for genesis block is GenesisTimestamp as well.
 	parentTimestamp := types.GenesisTimestamp
@@ -316,13 +340,13 @@ func getTargets(headers []types.BlockHeader) []types.Target {
 	totalTarget := types.RootDepth
 	// The first target is root target.
 	targets[0] = types.RootTarget
-	for i := 0; i < len(headers)-1; i++ {
-		blockHeader := headers[i]
+	for i := 0; i < headers.Length()-1; i++ {
+		blockHeader := headers.Index(i)
 		// The algorithm computes the target of a child.
 		// That's why we set i+1s target here.
-		targets[i+1] = calculateChildTarget(headers[:i+1], targets[i], totalTime, totalTarget, parentHeight, parentTimestamp)
+		targets[i+1] = calculateChildTarget(headers, targets[i], totalTime, totalTarget, parentHeight, parentTimestamp)
 		// Calculate the new block totals.
-		totalTime, totalTarget = calculateBlockTotals(i, blockHeader.ID(), totalTime, parentTimestamp, blockHeader.Timestamp, totalTarget, targets[i])
+		totalTime, totalTarget = calculateBlockTotals(i, blockHeader.CurrentID, totalTime, parentTimestamp, blockHeader.Timestamp, totalTarget, targets[i])
 		// Update the parents values.
 		parentTimestamp = blockHeader.Timestamp
 		parentHeight = i
@@ -330,28 +354,23 @@ func getTargets(headers []types.BlockHeader) []types.Target {
 	return targets
 }
 
-func VerifyBlockHeaders(headers []byte) error {
-	headersSlice, err := GetHeadersSlice(headers)
-	if err != nil {
-		return err
+func VerifyBlockHeaders(headers BlockHeadersSet) error {
+	if headers.Length() == 0 {
+		return fmt.Errorf("number of block headers is 0")
 	}
-	if len(headers)/48 == 0 {
-		return fmt.Errorf("Can't verify list of 0 headers")
+	targets := getTargets(headers)
+	first := headers.Index(0)
+	minTimestamp := first.Timestamp
+	if first.CurrentID != types.GenesisID {
+		return fmt.Errorf("bad genesis block")
 	}
-	targets := getTargets(headersSlice)
-	minTimestamp := headersSlice[0].Timestamp
-	for i, header := range headersSlice {
-		if i == 0 {
-			if header.ID() != types.GenesisID {
-				return fmt.Errorf("bad consensus block")
-			}
-			continue
-		}
-		err = verifyBlockHeader(header, minTimestamp, targets[i])
-		if err != nil {
+	var err error
+	for i := 1; i < headers.Length(); i++ {
+		header := headers.Index(i)
+		if err = verifyBlockHeader(header, minTimestamp, targets[i]); err != nil {
 			return fmt.Errorf("verifyBlockHeader of block %d: %v", i, err)
 		}
-		minTimestamp, err = minimumValidChildTimestamp(headersSlice[:i+1])
+		minTimestamp, err = minimumValidChildTimestamp(headers, i)
 		if err != nil {
 			return err
 		}
