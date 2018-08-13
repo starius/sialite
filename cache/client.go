@@ -341,6 +341,12 @@ func VerifyBlockHeaders(headers []byte) error {
 	targets := getTargets(headersSlice)
 	minTimestamp := headersSlice[0].Timestamp
 	for i, header := range headersSlice {
+		if i == 0 {
+			if header.ID() != types.GenesisID {
+				return fmt.Errorf("bad consensus block")
+			}
+			continue
+		}
 		err = verifyBlockHeader(header, minTimestamp, targets[i])
 		if err != nil {
 			return fmt.Errorf("verifyBlockHeader of block %d: %v", i, err)
