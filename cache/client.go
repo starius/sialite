@@ -2,6 +2,7 @@ package cache
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"sort"
@@ -33,8 +34,9 @@ func verifyBlockHeader(
 	minTimestamp types.Timestamp,
 	target types.Target,
 ) error {
-	if !checkTarget(header.ID(), target) {
-		return fmt.Errorf("Block header validation failed: Block is unsolved")
+	id := header.ID()
+	if !checkTarget(id, target) {
+		return fmt.Errorf("Block header validation failed: block is unsolved, id %s, target %s", id, hex.EncodeToString(target[:]))
 	}
 	// Check that the timestamp is not too far in the past to be acceptable.
 	if header.Timestamp < minTimestamp {
@@ -341,7 +343,7 @@ func VerifyBlockHeaders(headers []byte) error {
 	for i, header := range headersSlice {
 		err = verifyBlockHeader(header, minTimestamp, targets[i])
 		if err != nil {
-			return err
+			return fmt.Errorf("verifyBlockHeader of block %d: %v", i, err)
 		}
 		minTimestamp, err = minimumValidChildTimestamp(headersSlice[:i+1])
 		if err != nil {
