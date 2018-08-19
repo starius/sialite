@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math/rand"
 	"sort"
 	"testing"
@@ -104,6 +105,35 @@ next:
 			} else if !bytes.Equal(seenValue, wantValue) {
 				t.Errorf("%s.Lookup(%s): returned %s, want %s", name, hex.EncodeToString(key), hex.EncodeToString(seenValue), hex.EncodeToString(wantValue))
 			}
+		}
+		// Check the reader.
+		r, err := NewMapReader(c.pageLen, c.keyLen, c.valueLen, &data)
+		if err != nil {
+			t.Errorf("NewMapReader%s: %v", name, err)
+			continue next
+		}
+		rec := make([]byte, c.keyLen+c.valueLen)
+		seenKey := rec[:c.keyLen]
+		seenValue := rec[c.keyLen:]
+		for _, p := range pairs {
+			wantKey := p.key[:c.keyLen]
+			wantValue := p.value[:c.valueLen]
+			if _, err := r.Read(rec); err != nil {
+				t.Errorf("MapReader%s.Read: %v", name, err)
+				continue next
+			}
+			if !bytes.Equal(seenKey, wantKey) {
+				t.Errorf("MapReader%s.Read returned key %s, want %s", name, hex.EncodeToString(seenKey), hex.EncodeToString(wantKey))
+				continue next
+			}
+			if !bytes.Equal(seenValue, wantValue) {
+				t.Errorf("MapReader%s.Read returned different value", name)
+				continue next
+			}
+		}
+		if _, err := r.Read(rec); err != io.EOF {
+			t.Errorf("MapReader%s.Read in the end returned %v, want io.EOF", name, err)
+			continue next
 		}
 	}
 }

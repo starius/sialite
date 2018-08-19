@@ -226,3 +226,72 @@ func (m *Map) Lookup(key []byte) ([]byte, error) {
 	value := page[start : start+m.valueLen]
 	return value, nil
 }
+
+type MapReader struct {
+	pageLen, keyLen, valueLen, valuesStart int
+
+	data io.Reader
+	ffff []byte
+
+	page       []byte
+	keyStart   int
+	valueStart int
+}
+
+func NewMapReader(pageLen, keyLen, valueLen int, data io.Reader) (*MapReader, error) {
+	perPage := pageLen / (keyLen + valueLen)
+	valuesStart := perPage * keyLen
+	ffff := make([]byte, keyLen)
+	for i := range ffff {
+		ffff[i] = 0xFF
+	}
+	return &MapReader{
+		pageLen:     pageLen,
+		keyLen:      keyLen,
+		valueLen:    valueLen,
+		valuesStart: valuesStart,
+		data:        data,
+		ffff:        ffff,
+		page:        make([]byte, pageLen),
+		keyStart:    valuesStart, // This will cause data.Read from the first Read.
+	}, nil
+}
+
+func (r *MapReader) Read(rec []byte) (int, error) {
+	if len(rec) != r.keyLen+r.valueLen {
+		return 0, fmt.Errorf("Wrong read size")
+	}
+	key := rec[:r.keyLen]
+	value := rec[r.keyLen:]
+	maybeKey := r.page[r.keyStart : r.keyStart+r.keyLen]
+	if r.keyStart == r.valuesStart || bytes.Equal(maybeKey, r.ffff) {
+		// Read next page.
+		if n, err := r.data.Read(r.page); err == io.EOF {
+			return 0, io.EOF
+		} else if err != nil {
+			return 0, fmt.Errorf("failed to read from the underlying reader: %v", err)
+		} else if n != len(r.page) {
+			return 0, fmt.Errorf("short read from the underlying reader (%d != %d)", n, len(r.page))
+		}
+		r.keyStart = 0
+		r.valueStart = r.valuesStart
+	}
+	// Copy the key.
+	nextKey := r.keyStart + r.keyLen
+	copy(key, r.page[r.keyStart:nextKey])
+	r.keyStart = nextKey
+	// Copy the value.
+	nextValue := r.valueStart + r.valueLen
+	copy(value, r.page[r.valueStart:nextValue])
+	r.valueStart = nextValue
+	return len(rec), nil
+}
+
+func (r *MapReader) Close() error {
+	if c, ok := r.data.(io.Closer); ok {
+		if err := c.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
