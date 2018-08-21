@@ -228,7 +228,7 @@ func (m *Map) Lookup(key []byte) ([]byte, error) {
 }
 
 type MapReader struct {
-	pageLen, keyLen, valueLen, valuesStart int
+	keyLen, valueLen, valuesStart int
 
 	data io.Reader
 	ffff []byte
@@ -246,7 +246,6 @@ func NewMapReader(pageLen, keyLen, valueLen int, data io.Reader) (*MapReader, er
 		ffff[i] = 0xFF
 	}
 	return &MapReader{
-		pageLen:     pageLen,
 		keyLen:      keyLen,
 		valueLen:    valueLen,
 		valuesStart: valuesStart,
