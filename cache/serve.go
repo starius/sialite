@@ -97,7 +97,7 @@ func NewServer(dir string) (*Server, error) {
 		addressUninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
 		addressContainerLen = 2 * par.OffsetIndexLen
 	}
-	addressMap, err := fastmap.OpenMultiMap(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, par.AddressOffsetLen, addressContainerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, addressUninliner)
+	addressMap, err := fastmap.OpenMultiMap(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, addressContainerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, addressUninliner)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func NewServer(dir string) (*Server, error) {
 		contractUninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
 		contractContainerLen = 2 * par.OffsetIndexLen
 	}
-	contractMap, err := fastmap.OpenMultiMap(par.ContractPageLen, par.ContractPrefixLen, par.OffsetIndexLen, par.ContractOffsetLen, contractContainerLen, s.ContractsFastmapData, s.ContractsFastmapPrefixes, s.ContractsIndices, contractUninliner)
+	contractMap, err := fastmap.OpenMultiMap(par.ContractPageLen, par.ContractPrefixLen, par.OffsetIndexLen, contractContainerLen, s.ContractsFastmapData, s.ContractsFastmapPrefixes, s.ContractsIndices, contractUninliner)
 	if err != nil {
 		return nil, err
 	}

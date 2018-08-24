@@ -123,9 +123,9 @@ next:
 		// Check the map.
 		var m *MultiMap
 		if c.withInliner {
-			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, 2*c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(c.valueLen))
+			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, 2*c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(c.valueLen))
 		} else {
-			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NoUninliner{})
+			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NoUninliner{})
 		}
 		if err != nil {
 			t.Errorf("OpenMultiMap%s: %v", name, err)
@@ -196,7 +196,7 @@ func TestMultumapEmpty(t *testing.T) {
 		t.Errorf("data.Len() = %d; prefixes.Len() = %d; values.Len() = %d", data.Len(), prefixes.Len(), values.Len())
 	}
 	// Open the map.
-	m, err := OpenMultiMap(4096, 4, 4, 4, 2*4, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(4))
+	m, err := OpenMultiMap(4096, 4, 4, 2*4, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(4))
 	if err != nil {
 		t.Errorf("OpenMap: %v", err)
 	}

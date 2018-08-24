@@ -218,7 +218,7 @@ type MultiMap struct {
 	uninliner Uninliner
 }
 
-func OpenMultiMap(pageLen, keyLen, valueLen, offsetLen, containerLen int, data, prefixes, values []byte, uninliner Uninliner) (*MultiMap, error) {
+func OpenMultiMap(pageLen, keyLen, valueLen, containerLen int, data, prefixes, values []byte, uninliner Uninliner) (*MultiMap, error) {
 	fm, err := OpenMap(pageLen, keyLen, containerLen, data, prefixes)
 	if err != nil {
 		return nil, err
