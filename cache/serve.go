@@ -30,15 +30,13 @@ type Server struct {
 	LeavesHashes   []byte
 	Headers        []byte
 
-	AddressesFastmapData     []byte
-	AddressesFastmapPrefixes []byte
-	AddressesIndices         []byte
-	addressMap               *fastmap.MultiMap
+	AddressesFastmapData []byte
+	AddressesIndices     []byte
+	addressMap           *fastmap.MultiMap
 
-	ContractsFastmapData     []byte
-	ContractsFastmapPrefixes []byte
-	ContractsIndices         []byte
-	contractMap              *fastmap.MultiMap
+	ContractsFastmapData []byte
+	ContractsIndices     []byte
+	contractMap          *fastmap.MultiMap
 
 	offsetLen         int
 	offsetIndexLen    int
@@ -92,23 +90,19 @@ func NewServer(dir string) (*Server, error) {
 		}
 	}
 	var addressUninliner fastmap.Uninliner = fastmap.NoUninliner{}
-	addressContainerLen := par.OffsetIndexLen
 	if par.AddressOffsetLen == par.OffsetIndexLen {
 		addressUninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
-		addressContainerLen = 2 * par.OffsetIndexLen
 	}
-	addressMap, err := fastmap.OpenMultiMap(par.AddressPageLen, par.AddressPrefixLen, par.OffsetIndexLen, addressContainerLen, s.AddressesFastmapData, s.AddressesFastmapPrefixes, s.AddressesIndices, addressUninliner)
+	addressMap, err := fastmap.OpenMultiMap(par.OffsetIndexLen, s.AddressesFastmapData, s.AddressesIndices, addressUninliner)
 	if err != nil {
 		return nil, err
 	}
 	s.addressMap = addressMap
 	var contractUninliner fastmap.Uninliner = fastmap.NoUninliner{}
-	contractContainerLen := par.OffsetIndexLen
 	if par.ContractOffsetLen == par.OffsetIndexLen {
 		contractUninliner = fastmap.NewFFOOInliner(par.OffsetIndexLen)
-		contractContainerLen = 2 * par.OffsetIndexLen
 	}
-	contractMap, err := fastmap.OpenMultiMap(par.ContractPageLen, par.ContractPrefixLen, par.OffsetIndexLen, contractContainerLen, s.ContractsFastmapData, s.ContractsFastmapPrefixes, s.ContractsIndices, contractUninliner)
+	contractMap, err := fastmap.OpenMultiMap(par.OffsetIndexLen, s.ContractsFastmapData, s.ContractsIndices, contractUninliner)
 	if err != nil {
 		return nil, err
 	}

@@ -101,8 +101,8 @@ type MultiMapWriter struct {
 	// TODO should write varints to values
 }
 
-func NewMultiMapWriter(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, data, prefixes, values io.Writer, inliner Inliner) (*MultiMapWriter, error) {
-	fm, err := NewMapWriter(pageLen, keyLen, containerLen, prefixLen, data, prefixes)
+func NewMultiMapWriter(pageLen, keyLen, valueLen, prefixLen, offsetLen, containerLen int, data, values io.Writer, inliner Inliner) (*MultiMapWriter, error) {
+	fm, err := NewMapWriter(pageLen, keyLen, containerLen, prefixLen, data)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +218,8 @@ type MultiMap struct {
 	uninliner Uninliner
 }
 
-func OpenMultiMap(pageLen, keyLen, valueLen, containerLen int, data, prefixes, values []byte, uninliner Uninliner) (*MultiMap, error) {
-	fm, err := OpenMap(pageLen, keyLen, containerLen, data, prefixes)
+func OpenMultiMap(valueLen int, data, values []byte, uninliner Uninliner) (*MultiMap, error) {
+	fm, err := OpenMap(data)
 	if err != nil {
 		return nil, err
 	}

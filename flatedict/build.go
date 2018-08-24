@@ -127,11 +127,7 @@ func NewBuilder(dictLen, fragmentLen, tileLen, memLimit, counterLen, minCount, m
 	if err != nil {
 		return nil, fmt.Errorf("failed to open 'data' file: %v", err)
 	}
-	prefixes, err := os.Create(filepath.Join(dir, "prefixes"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open 'prefixes' file: %v", err)
-	}
-	mapWriter, err := fastmap.NewMapWriter(mapPageLen, tileLen, counterLen, tileLen, data, prefixes)
+	mapWriter, err := fastmap.NewMapWriter(mapPageLen, tileLen, counterLen, tileLen, data)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapWriter: %v", err)
 	}
@@ -212,20 +208,7 @@ func (b *Builder) Close() error {
 	if err != nil {
 		return fmt.Errorf("syscall.Mmap(data): %v", err)
 	}
-	prefixes, err := os.Open(filepath.Join(b.dir, "prefixes"))
-	if err != nil {
-		return fmt.Errorf("failed to open 'prefixes' file: %v", err)
-	}
-	defer prefixes.Close()
-	stat, err = prefixes.Stat()
-	if err != nil {
-		return fmt.Errorf("prefixes.Stat: %v", err)
-	}
-	prefixesBuf, err := syscall.Mmap(int(prefixes.Fd()), 0, int(stat.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
-	if err != nil {
-		return fmt.Errorf("syscall.Mmap(prefixes): %v", err)
-	}
-	s, err := fastmap.OpenMap(b.mapPageLen, b.tileLen, b.counterLen, dataBuf, prefixesBuf)
+	s, err := fastmap.OpenMap(dataBuf)
 	if err != nil {
 		return fmt.Errorf("fastmap.OpenMap: %v", err)
 	}

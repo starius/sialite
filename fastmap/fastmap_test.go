@@ -54,9 +54,9 @@ func TestFastmap(t *testing.T) {
 next:
 	for _, c := range cases {
 		// Build.
-		var data, prefixes bytes.Buffer
-		w, err := NewMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, &data, &prefixes)
-		name := fmt.Sprintf("(%d, %d, %d, %d, data, prefixes)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen)
+		var data bytes.Buffer
+		w, err := NewMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, &data)
+		name := fmt.Sprintf("(%d, %d, %d, %d, data)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen)
 		if err != nil {
 			t.Errorf("NewMapWriter%s: %v", name, err)
 			continue next
@@ -91,7 +91,7 @@ next:
 			continue next
 		}
 		// Check the map.
-		m, err := OpenMap(c.pageLen, c.keyLen, c.valueLen, data.Bytes(), prefixes.Bytes())
+		m, err := OpenMap(data.Bytes())
 		if err != nil {
 			t.Errorf("Open%s: %v", name, err)
 			continue next
@@ -107,7 +107,8 @@ next:
 			}
 		}
 		// Check the reader.
-		r, err := NewMapReader(c.pageLen, c.keyLen, c.valueLen, &data)
+		dataReader := bytes.NewReader(data.Bytes())
+		r, err := NewMapReader(dataReader.Len(), dataReader)
 		if err != nil {
 			t.Errorf("NewMapReader%s: %v", name, err)
 			continue next
@@ -139,8 +140,8 @@ next:
 }
 
 func TestFastmapRejectsFFKeys(t *testing.T) {
-	var data, prefixes bytes.Buffer
-	w, err := NewMapWriter(4096, 10, 10, 10, &data, &prefixes)
+	var data bytes.Buffer
+	w, err := NewMapWriter(4096, 10, 10, 10, &data)
 	if err != nil {
 		t.Fatalf("NewMapWriter: %v", err)
 	}
@@ -159,8 +160,8 @@ func TestFastmapRejectsFFKeys(t *testing.T) {
 }
 
 func TestFastmapRejectsUnorderedKeys(t *testing.T) {
-	var data, prefixes bytes.Buffer
-	w, err := NewMapWriter(4096, 10, 10, 10, &data, &prefixes)
+	var data bytes.Buffer
+	w, err := NewMapWriter(4096, 10, 10, 10, &data)
 	if err != nil {
 		t.Fatalf("NewMapWriter: %v", err)
 	}
@@ -185,8 +186,8 @@ func TestFastmapRejectsUnorderedKeys(t *testing.T) {
 }
 
 func TestFastmapRejectsDuplicateKeys(t *testing.T) {
-	var data, prefixes bytes.Buffer
-	w, err := NewMapWriter(4096, 10, 10, 10, &data, &prefixes)
+	var data bytes.Buffer
+	w, err := NewMapWriter(4096, 10, 10, 10, &data)
 	if err != nil {
 		t.Fatalf("NewMapWriter: %v", err)
 	}
@@ -208,19 +209,16 @@ func TestFastmapRejectsDuplicateKeys(t *testing.T) {
 }
 
 func TestFastmapEmpty(t *testing.T) {
-	var data, prefixes bytes.Buffer
-	w, err := NewMapWriter(4096, 10, 10, 10, &data, &prefixes)
+	var data bytes.Buffer
+	w, err := NewMapWriter(4096, 10, 10, 10, &data)
 	if err != nil {
 		t.Fatalf("NewMapWriter: %v", err)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close(): %v", err)
 	}
-	if data.Len() != 0 || prefixes.Len() != 0 {
-		t.Errorf("data.Len() = %d; prefixes.Len() = %d", data.Len(), prefixes.Len())
-	}
 	// Check the map.
-	m, err := OpenMap(4096, 10, 10, data.Bytes(), prefixes.Bytes())
+	m, err := OpenMap(data.Bytes())
 	if err != nil {
 		t.Errorf("OpenMap: %v", err)
 	}

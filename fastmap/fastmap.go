@@ -2,6 +2,7 @@ package fastmap
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"sort"
@@ -11,10 +12,16 @@ var (
 	ErrLowPrefixLen = fmt.Errorf("Prefix is too short")
 )
 
+// File structure:
+// pages | prefixes | uint32(npages) | uint32(pageLen) | uint32(keyLen) | uint32(valueLen) | uint32(prefixLen)
+
+const tailLen = 5 * 4
+
 type MapWriter struct {
 	pageLen, keyLen, valueLen, prefixLen int
 
-	data, prefixes io.Writer
+	data     io.Writer
+	prefixes []byte
 
 	ffff []byte
 
@@ -28,7 +35,7 @@ type MapWriter struct {
 	hasPrevPage bool
 }
 
-func NewMapWriter(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Writer) (*MapWriter, error) {
+func NewMapWriter(pageLen, keyLen, valueLen, prefixLen int, data io.Writer) (*MapWriter, error) {
 	perPage := pageLen / (keyLen + valueLen)
 	valuesStart := perPage * keyLen
 	ffff := make([]byte, keyLen)
@@ -41,7 +48,6 @@ func NewMapWriter(pageLen, keyLen, valueLen, prefixLen int, data, prefixes io.Wr
 		valueLen:    valueLen,
 		prefixLen:   prefixLen,
 		data:        data,
-		prefixes:    prefixes,
 		ffff:        ffff,
 		valuesStart: valuesStart,
 		prevKey:     make([]byte, keyLen),
@@ -109,12 +115,8 @@ func (w *MapWriter) Write(rec []byte) (int, error) {
 	w.keyStart = nextKeyStart
 	w.valueStart = nextValueStart
 	if w.hasPrevPage || w.npages == 0 {
-		// Write prefix.
-		if n, err := w.prefixes.Write(w.page[:w.prefixLen]); err != nil {
-			return 0, err
-		} else if n != w.prefixLen {
-			return 0, io.ErrShortWrite
-		}
+		// Add prefix.
+		w.prefixes = append(w.prefixes, w.page[:w.prefixLen]...)
 		w.npages++
 		w.hasPrevPage = false
 	}
@@ -144,17 +146,52 @@ func (w *MapWriter) Close() error {
 		}
 		w.keyStart = 0
 	}
+	npages := len(w.prefixes) / w.prefixLen
+	suffix := w.prefixes
+	buf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(buf, uint32(npages))
+	suffix = append(suffix, buf...)
+	binary.LittleEndian.PutUint32(buf, uint32(w.pageLen))
+	suffix = append(suffix, buf...)
+	binary.LittleEndian.PutUint32(buf, uint32(w.keyLen))
+	suffix = append(suffix, buf...)
+	binary.LittleEndian.PutUint32(buf, uint32(w.valueLen))
+	suffix = append(suffix, buf...)
+	binary.LittleEndian.PutUint32(buf, uint32(w.prefixLen))
+	suffix = append(suffix, buf...)
+	if n, err := w.data.Write(suffix); err != nil {
+		return err
+	} else if n != len(suffix) {
+		return io.ErrShortWrite
+	}
 	if c, ok := w.data.(io.Closer); ok {
 		if err := c.Close(); err != nil {
 			return err
 		}
 	}
-	if c, ok := w.prefixes.(io.Closer); ok {
-		if err := c.Close(); err != nil {
-			return err
-		}
-	}
 	return nil
+}
+
+type mapParams struct {
+	npages, pageLen, keyLen, valueLen, prefixLen         int
+	perPage, valuesStart, dataLen, prefixesLen, totalLen int
+}
+
+func parseTail(tail []byte) (p mapParams) {
+	if len(tail) != tailLen {
+		panic("bad tail length")
+	}
+	p.npages = int(binary.LittleEndian.Uint32(tail[0:4]))
+	p.pageLen = int(binary.LittleEndian.Uint32(tail[4:8]))
+	p.keyLen = int(binary.LittleEndian.Uint32(tail[8:12]))
+	p.valueLen = int(binary.LittleEndian.Uint32(tail[12:16]))
+	p.prefixLen = int(binary.LittleEndian.Uint32(tail[16:20]))
+	p.perPage = p.pageLen / (p.keyLen + p.valueLen)
+	p.valuesStart = p.perPage * p.keyLen
+	p.dataLen = p.npages * p.pageLen
+	p.prefixesLen = p.npages * p.prefixLen
+	p.totalLen = p.dataLen + p.prefixesLen + tailLen
+	return
 }
 
 type Map struct {
@@ -163,28 +200,25 @@ type Map struct {
 	data, prefixes []byte
 }
 
-func OpenMap(pageLen, keyLen, valueLen int, data, prefixes []byte) (*Map, error) {
-	npages := len(data) / pageLen
-	if npages*pageLen != len(data) {
-		return nil, fmt.Errorf("data length is not divided by pageLen")
+func OpenMap(input []byte) (*Map, error) {
+	if len(input) < tailLen {
+		return nil, fmt.Errorf("input is too short")
 	}
-	var prefixLen int
-	if npages != 0 {
-		prefixLen = len(prefixes) / npages
-		if npages*prefixLen != len(prefixes) {
-			return nil, fmt.Errorf("prefixes length is not divided by the number of pages")
-		}
+	tail := input[len(input)-tailLen:]
+	p := parseTail(tail)
+	if len(input) != p.totalLen {
+		return nil, fmt.Errorf("input has incorrect length %d, want %d", len(input), p.totalLen)
 	}
-	perPage := pageLen / (keyLen + valueLen)
-	valuesStart := perPage * keyLen
+	data := input[:p.dataLen]
+	prefixes := input[p.dataLen : p.dataLen+p.prefixesLen]
 	return &Map{
-		npages:      npages,
-		pageLen:     pageLen,
-		keyLen:      keyLen,
-		valueLen:    valueLen,
-		prefixLen:   prefixLen,
-		perPage:     perPage,
-		valuesStart: valuesStart,
+		npages:      p.npages,
+		pageLen:     p.pageLen,
+		keyLen:      p.keyLen,
+		valueLen:    p.valueLen,
+		prefixLen:   p.prefixLen,
+		perPage:     p.perPage,
+		valuesStart: p.valuesStart,
 		data:        data,
 		prefixes:    prefixes,
 	}, nil
@@ -230,29 +264,44 @@ func (m *Map) Lookup(key []byte) ([]byte, error) {
 type MapReader struct {
 	keyLen, valueLen, valuesStart int
 
-	data io.Reader
-	ffff []byte
-
+	data       io.ReaderAt
+	ffff       []byte
 	page       []byte
+	pageStart  int
 	keyStart   int
 	valueStart int
+	dataLen    int
+	pageLen    int
 }
 
-func NewMapReader(pageLen, keyLen, valueLen int, data io.Reader) (*MapReader, error) {
-	perPage := pageLen / (keyLen + valueLen)
-	valuesStart := perPage * keyLen
-	ffff := make([]byte, keyLen)
+func NewMapReader(size int, data io.ReaderAt) (*MapReader, error) {
+	if size < tailLen {
+		return nil, fmt.Errorf("input is too short")
+	}
+	tail := make([]byte, tailLen)
+	if n, err := data.ReadAt(tail, int64(size-tailLen)); err != nil {
+		return nil, fmt.Errorf("failed to read tail: %v", err)
+	} else if n != tailLen {
+		return nil, fmt.Errorf("short read")
+	}
+	p := parseTail(tail)
+	if size != p.totalLen {
+		return nil, fmt.Errorf("input has incorrect length %d, want %d", size, p.totalLen)
+	}
+	ffff := make([]byte, p.keyLen)
 	for i := range ffff {
 		ffff[i] = 0xFF
 	}
 	return &MapReader{
-		keyLen:      keyLen,
-		valueLen:    valueLen,
-		valuesStart: valuesStart,
+		keyLen:      p.keyLen,
+		valueLen:    p.valueLen,
+		valuesStart: p.valuesStart,
+		dataLen:     p.dataLen,
+		pageLen:     p.pageLen,
 		data:        data,
 		ffff:        ffff,
-		page:        make([]byte, pageLen),
-		keyStart:    valuesStart, // This will cause data.Read from the first Read.
+		page:        make([]byte, p.pageLen),
+		keyStart:    p.valuesStart, // This will cause page read from the first Read.
 	}, nil
 }
 
@@ -264,14 +313,16 @@ func (r *MapReader) Read(rec []byte) (int, error) {
 	value := rec[r.keyLen:]
 	maybeKey := r.page[r.keyStart : r.keyStart+r.keyLen]
 	if r.keyStart == r.valuesStart || bytes.Equal(maybeKey, r.ffff) {
-		// Read next page.
-		if n, err := r.data.Read(r.page); err == io.EOF {
+		if r.pageStart == r.dataLen {
 			return 0, io.EOF
-		} else if err != nil {
+		}
+		// Read next page.
+		if n, err := r.data.ReadAt(r.page, int64(r.pageStart)); err != nil {
 			return 0, fmt.Errorf("failed to read from the underlying reader: %v", err)
 		} else if n != len(r.page) {
 			return 0, fmt.Errorf("short read from the underlying reader (%d != %d)", n, len(r.page))
 		}
+		r.pageStart += r.pageLen
 		r.keyStart = 0
 		r.valueStart = r.valuesStart
 	}

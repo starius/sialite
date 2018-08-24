@@ -69,18 +69,18 @@ func TestMultiMap(t *testing.T) {
 	}
 next:
 	for _, c := range cases {
-		name := fmt.Sprintf("(%d, %d, %d, %d, %d, %d, data, prefixes, values, %v)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, c.withInliner)
+		name := fmt.Sprintf("(%d, %d, %d, %d, %d, %d, data, values, %v)", c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, c.withInliner)
 		// Build.
-		var data, prefixes, values bytes.Buffer
+		var data, values bytes.Buffer
 		var w *MultiMapWriter
 		var err error
 		if c.withInliner {
 			if c.valueLen != c.offsetLen {
 				t.Errorf("%s: c.valueLen != c.offsetLen", name)
 			}
-			w, err = NewMultiMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, 2*c.offsetLen, &data, &prefixes, &values, NewFFOOInliner(c.valueLen))
+			w, err = NewMultiMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, 2*c.offsetLen, &data, &values, NewFFOOInliner(c.valueLen))
 		} else {
-			w, err = NewMultiMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, &data, &prefixes, &values, NoInliner{})
+			w, err = NewMultiMapWriter(c.pageLen, c.keyLen, c.valueLen, c.prefixLen, c.offsetLen, c.offsetLen, &data, &values, NoInliner{})
 		}
 		if err != nil {
 			t.Errorf("NewMultiMapWriter%s: %v", name, err)
@@ -123,9 +123,9 @@ next:
 		// Check the map.
 		var m *MultiMap
 		if c.withInliner {
-			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, 2*c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(c.valueLen))
+			m, err = OpenMultiMap(c.valueLen, data.Bytes(), values.Bytes(), NewFFOOInliner(c.valueLen))
 		} else {
-			m, err = OpenMultiMap(c.pageLen, c.keyLen, c.valueLen, c.offsetLen, data.Bytes(), prefixes.Bytes(), values.Bytes(), NoUninliner{})
+			m, err = OpenMultiMap(c.valueLen, data.Bytes(), values.Bytes(), NoUninliner{})
 		}
 		if err != nil {
 			t.Errorf("OpenMultiMap%s: %v", name, err)
@@ -156,8 +156,8 @@ func TestMultiMapFFOORefectsFFAnd00inValues(t *testing.T) {
 	errWrite := errors.New("Write")
 	errClose := errors.New("Close")
 	f := func(value0 []byte) error {
-		var data, prefixes, values bytes.Buffer
-		w, err := NewMultiMapWriter(4096, 4, 4, 4, 4, 2*4, &data, &prefixes, &values, NewFFOOInliner(4))
+		var data, values bytes.Buffer
+		w, err := NewMultiMapWriter(4096, 4, 4, 4, 4, 2*4, &data, &values, NewFFOOInliner(4))
 		if err != nil {
 			return errNew
 		}
@@ -184,19 +184,16 @@ func TestMultiMapFFOORefectsFFAnd00inValues(t *testing.T) {
 }
 
 func TestMultumapEmpty(t *testing.T) {
-	var data, prefixes, values bytes.Buffer
-	w, err := NewMultiMapWriter(4096, 4, 4, 4, 4, 2*4, &data, &prefixes, &values, NewFFOOInliner(4))
+	var data, values bytes.Buffer
+	w, err := NewMultiMapWriter(4096, 4, 4, 4, 4, 2*4, &data, &values, NewFFOOInliner(4))
 	if err != nil {
 		t.Fatalf("NewMapWriter: %v", err)
 	}
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close(): %v", err)
 	}
-	if data.Len() != 0 || prefixes.Len() != 0 || values.Len() != 0 {
-		t.Errorf("data.Len() = %d; prefixes.Len() = %d; values.Len() = %d", data.Len(), prefixes.Len(), values.Len())
-	}
 	// Open the map.
-	m, err := OpenMultiMap(4096, 4, 4, 2*4, data.Bytes(), prefixes.Bytes(), values.Bytes(), NewFFOOInliner(4))
+	m, err := OpenMultiMap(4, data.Bytes(), values.Bytes(), NewFFOOInliner(4))
 	if err != nil {
 		t.Errorf("OpenMap: %v", err)
 	}

@@ -21,18 +21,12 @@ import (
 )
 
 type parameters struct {
-	OffsetLen      int
-	OffsetIndexLen int
-
-	AddressPageLen          int
-	AddressPrefixLen        int
-	AddressFastmapPrefixLen int
-	AddressOffsetLen        int
-
-	ContractPageLen          int
-	ContractPrefixLen        int
-	ContractFastmapPrefixLen int
-	ContractOffsetLen        int
+	OffsetLen         int
+	OffsetIndexLen    int
+	AddressPrefixLen  int
+	AddressOffsetLen  int
+	ContractPrefixLen int
+	ContractOffsetLen int
 }
 
 type blockHeader struct {
@@ -121,16 +115,12 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	}
 
 	p := parameters{
-		OffsetLen:                offsetLen,
-		OffsetIndexLen:           offsetIndexLen,
-		AddressPageLen:           addressPageLen,
-		AddressPrefixLen:         addressPrefixLen,
-		AddressFastmapPrefixLen:  addressFastmapPrefixLen,
-		AddressOffsetLen:         addressOffsetLen,
-		ContractPageLen:          contractPageLen,
-		ContractPrefixLen:        contractPrefixLen,
-		ContractFastmapPrefixLen: contractFastmapPrefixLen,
-		ContractOffsetLen:        contractOffsetLen,
+		OffsetLen:         offsetLen,
+		OffsetIndexLen:    offsetIndexLen,
+		AddressPrefixLen:  addressPrefixLen,
+		AddressOffsetLen:  addressOffsetLen,
+		ContractPrefixLen: contractPrefixLen,
+		ContractOffsetLen: contractOffsetLen,
 	}
 
 	parametersJson, err := os.Create(path.Join(dir, "parameters.json"))
@@ -176,10 +166,6 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	if err != nil {
 		return nil, fmt.Errorf("opening addressesFastmapData: %v", err)
 	}
-	addressesFastmapPrefixes, err := os.Create(path.Join(dir, "addressesFastmapPrefixes"))
-	if err != nil {
-		return nil, fmt.Errorf("opening addressesFastmapPrefixes: %v", err)
-	}
 	addressesIndices, err := os.Create(path.Join(dir, "addressesIndices"))
 	if err != nil {
 		return nil, fmt.Errorf("opening addressesIndices: %v", err)
@@ -188,10 +174,6 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 	contractsFastmapData, err := os.Create(path.Join(dir, "contractsFastmapData"))
 	if err != nil {
 		return nil, fmt.Errorf("opening contractsFastmapData: %v", err)
-	}
-	contractsFastmapPrefixes, err := os.Create(path.Join(dir, "contractsFastmapPrefixes"))
-	if err != nil {
-		return nil, fmt.Errorf("opening contractsFastmapPrefixes: %v", err)
 	}
 	contractsIndices, err := os.Create(path.Join(dir, "contractsIndices"))
 	if err != nil {
@@ -204,7 +186,7 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		addressInliner = fastmap.NewFFOOInliner(offsetIndexLen)
 		addressContainerLen = 2 * offsetIndexLen
 	}
-	addressesMultiMapWriter, err := fastmap.NewMultiMapWriter(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, addressContainerLen, addressesFastmapData, addressesFastmapPrefixes, addressesIndices, addressInliner)
+	addressesMultiMapWriter, err := fastmap.NewMultiMapWriter(addressPageLen, addressPrefixLen, offsetIndexLen, addressFastmapPrefixLen, addressOffsetLen, addressContainerLen, addressesFastmapData, addressesIndices, addressInliner)
 	if err != nil {
 		return nil, fmt.Errorf("fastmap.NewMultiMapWriter: %v", err)
 	}
@@ -223,7 +205,7 @@ func NewBuilder(dir string, memLimit, offsetLen, offsetIndexLen, addressPageLen,
 		contractInliner = fastmap.NewFFOOInliner(offsetIndexLen)
 		contractContainerLen = 2 * offsetIndexLen
 	}
-	contractsMultiMapWriter, err := fastmap.NewMultiMapWriter(contractPageLen, contractPrefixLen, offsetIndexLen, contractFastmapPrefixLen, contractOffsetLen, contractContainerLen, contractsFastmapData, contractsFastmapPrefixes, contractsIndices, contractInliner)
+	contractsMultiMapWriter, err := fastmap.NewMultiMapWriter(contractPageLen, contractPrefixLen, offsetIndexLen, contractFastmapPrefixLen, contractOffsetLen, contractContainerLen, contractsFastmapData, contractsIndices, contractInliner)
 	if err != nil {
 		return nil, fmt.Errorf("fastmap.NewMultiMapWriter: %v", err)
 	}
